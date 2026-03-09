@@ -2,7 +2,26 @@
   become: yes
   gather_facts: yes
   tasks:
-    - name: create mysqldump
-      get_url: url=https://github.com/catatsuy/private-isu/releases/download/img/dump.sql.bz2 dest=/home/isucon/backup/mysqldump.sql.bz2 force=1
-    - name: create database
-      shell: bzcat /home/isucon/backup/mysqldump.sql.bz2 | mysql -u root
+    - name: download mysql dump
+      get_url: url=https://github.com/catatsuy/private-isu/releases/download/img/dump.sql.bz2 dest=/home/isucon/backup/dump.sql.bz2 force=1
+    - name: decompress dump
+      shell: bunzip2 -k -f /home/isucon/backup/dump.sql.bz2
+    - name: copy convert script
+      copy:
+        src: "{{ playbook_dir }}/../../../sql/convert_dump.py"
+        dest: /home/isucon/backup/convert_dump.py
+        owner: isucon
+        mode: '0755'
+    - name: convert mysql dump to postgresql
+      shell: python3 /home/isucon/backup/convert_dump.py /home/isucon/backup/dump.sql /home/isucon/backup/1_data.sql
+    - name: load schema
+      become_user: isucon
+      shell: psql -U isuconp -d isuconp -f /home/isucon/private_isu/sql/0_schema.sql
+    - name: load data
+      become_user: isucon
+      shell: psql -U isuconp -d isuconp -f /home/isucon/backup/1_data.sql
+    - name: cleanup intermediate files
+      file: path={{ item }} state=absent
+      with_items:
+        - /home/isucon/backup/dump.sql
+        - /home/isucon/backup/convert_dump.py

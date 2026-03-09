@@ -1,0 +1,24 @@
+---
+- hosts: guests:extras
+  become: yes
+  gather_facts: no
+  tasks:
+    - apt: name=postgresql state=present
+    - apt: name=postgresql-client state=present
+    - apt: name=memcached state=present
+    - apt: name=python3-psycopg2 state=present
+    - name: start postgresql
+      service: name=postgresql state=started enabled=yes
+    - name: create postgresql user
+      become_user: postgres
+      community.postgresql.postgresql_user:
+        name: isuconp
+        password: isuconp
+        role_attr_flags: CREATEDB
+        state: present
+    - name: create postgresql database
+      become_user: postgres
+      community.postgresql.postgresql_db:
+        name: isuconp
+        owner: isuconp
+        state: present
