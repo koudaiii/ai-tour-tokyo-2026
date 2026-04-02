@@ -15,20 +15,18 @@ This repository is a fork of [catatsuy/private-isu](https://github.com/catatsuy/
 
 Before working, initialize the project:
 ```bash
-make init  # Downloads dump.sql.bz2 and benchmarker image fixtures
+make init  # Downloads PostgreSQL dump and benchmarker image fixtures
 ```
 
 ### Data Preparation for PostgreSQL
 
-The downloaded `dump.sql.bz2` is in MySQL format. To convert for PostgreSQL:
+`make init` downloads and decompresses a PostgreSQL custom-format dump (`sql/isuconp_data.dump`):
 ```bash
-cd sql
-bunzip2 -k ../webapp/sql/dump.sql.bz2 -c > dump.sql  # or download and decompress
-python3 convert_dump.py dump.sql 1_data.sql
-rm dump.sql  # Remove MySQL dump to avoid conflicts
+make init
 ```
 
-Docker Compose automatically loads `sql/0_schema.sql` (schema) and `sql/1_data.sql` (data) in alphabetical order via PostgreSQL's `/docker-entrypoint-initdb.d`.
+Docker Compose initializes PostgreSQL via `/docker-entrypoint-initdb.d` using:
+- `script/restore` (restores `sql/isuconp_data.dump` with `pg_restore`)
 
 ## Common Development Commands
 
@@ -80,7 +78,7 @@ The application is intentionally designed with performance issues:
 - No connection pooling
 
 ### Database Schema
-Main tables (PostgreSQL, defined in `sql/0_schema.sql`):
+Main tables (PostgreSQL, defined in `sql/bootstrap_create_table.sql`):
 - `users`: id (SERIAL), account_name, passhash, authority, del_flg, created_at
 - `posts`: id (SERIAL), user_id, mime, imgdata (bytea), body, created_at
 - `comments`: id (SERIAL), post_id, user_id, comment, created_at
@@ -99,10 +97,16 @@ Main tables (PostgreSQL, defined in `sql/0_schema.sql`):
 ├── Dockerfile            # Python app container (python:3.14-slim)
 ├── compose.yml           # Docker Compose (nginx, app, postgres, memcached)
 ├── sql/
-│   ├── 0_schema.sql      # PostgreSQL table definitions
-│   ├── 1_data.sql        # PostgreSQL data (converted from MySQL dump, gitignored)
-│   ├── convert_dump.py   # MySQL dump → PostgreSQL converter script
-│   └── .gitignore        # Ignores *.bz2
+│   ├── bootstrap_create_table.sql      # PostgreSQL table definitions
+│   ├── bootstrap_*.sql   # SQL helpers used by script/bootstrap checks/fixes
+│   ├── isuconp_data.dump # PostgreSQL custom-format dump (from make init, ignored)
+│   └── .gitignore        # Ignores *.bz2 and *.dump
+├── script/
+│   ├── restore   # Restore script for PostgreSQL dump
+│   ├── bootstrap         # Local environment bootstrap
+│   ├── server            # Local web app launcher
+│   ├── backup            # DB dump backup helper
+│   └── upload-to-github  # Release upload helper
 ├── templates/            # Jinja2 HTML templates
 ├── public/               # Static assets (CSS, JS, images)
 ├── etc/nginx/conf.d/     # Nginx configuration
