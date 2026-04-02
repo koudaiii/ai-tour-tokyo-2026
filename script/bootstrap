@@ -100,6 +100,40 @@ wait_for_db() {
   return 1
 }
 
+check_memcached_connection() {
+  local address="${ISUCONP_MEMCACHED_ADDRESS}"
+  local host="${address%:*}"
+  local port="${address##*:}"
+
+  if [[ -z "${host}" || -z "${port}" || "${host}" == "${address}" || ! "${port}" =~ ^[0-9]+$ ]]; then
+    error_exit "Invalid ISUCONP_MEMCACHED_ADDRESS format: '${address}' (expected host:port)"
+  fi
+
+  log "Checking Memcached connection: ${host}:${port}"
+  if ! python3 - "${host}" "${port}" <<'PY'
+import socket
+import sys
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+
+try:
+    with socket.create_connection((host, port), timeout=2) as sock:
+        sock.sendall(b"version\r\n")
+        response = sock.recv(128)
+    if not response.startswith(b"VERSION"):
+        raise RuntimeError(f"unexpected response: {response!r}")
+except Exception as e:
+    print(e, file=sys.stderr)
+    sys.exit(1)
+PY
+  then
+    error_exit "Cannot connect to Memcached at ${host}:${port}. Start memcached or set ISUCONP_MEMCACHED_ADDRESS."
+  fi
+
+  log "Memcached connection looks good"
+}
+
 probe_db_connection() {
   local -a hosts=()
   local host
@@ -395,6 +429,7 @@ require_cmd curl
 require_cmd python3
 require_cmd bunzip2
 require_cmd unzip
+require_cmd memcached
 
 require_cmd uv
 if [[ "${SKIP_DB_CHECK}" -eq 0 ]]; then
@@ -433,6 +468,8 @@ if [[ "${SKIP_DB_CHECK}" -eq 0 ]]; then
 else
   log "Skipping PostgreSQL checks (use default behavior to validate schema and permissions)"
 fi
+
+check_memcached_connection
 
 cat <<'EOF'
 
