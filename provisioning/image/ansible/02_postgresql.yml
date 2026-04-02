@@ -4,7 +4,18 @@
   gather_facts: no
   tasks:
     - apt: name=postgresql state=present
-    - apt: name=postgresql-client state=present
+    - name: install latest available postgresql client
+      shell: |
+        set -euo pipefail
+        for v in 17 16 15 14; do
+          if apt-cache show "postgresql-client-${v}" >/dev/null 2>&1; then
+            apt-get install -y "postgresql-client-${v}"
+            exit 0
+          fi
+        done
+        apt-get install -y postgresql-client
+      args:
+        executable: /bin/bash
     - apt: name=memcached state=present
     - apt: name=python3-psycopg2 state=present
     - name: start postgresql

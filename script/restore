@@ -3,15 +3,47 @@ set -euo pipefail
 
 DUMP_PATH="${DUMP_PATH:-/docker-entrypoint-initdb.d/isuconp_data.dump}"
 
+resolve_pg_restore_bin() {
+  local best_bin=""
+  local best_major=0
+  local candidate
+
+  for candidate in /usr/lib/postgresql/*/bin/pg_restore; do
+    [[ -x "${candidate}" ]] || continue
+    local candidate_major
+    candidate_major="$(echo "${candidate}" | awk -F'/' '{print $(NF-2)}')"
+    if [[ "${candidate_major}" =~ ^[0-9]+$ ]] && (( candidate_major > best_major )); then
+      best_major="${candidate_major}"
+      best_bin="${candidate}"
+    fi
+  done
+
+  if [[ -z "${best_bin}" ]] && command -v pg_restore >/dev/null 2>&1; then
+    best_bin="$(command -v pg_restore)"
+  fi
+
+  if [[ -z "${best_bin}" ]]; then
+    echo "Error: 'pg_restore' is required but not installed." >&2
+    exit 1
+  fi
+  echo "${best_bin}"
+}
+
 if [[ ! -f "${DUMP_PATH}" ]]; then
   echo "[restore] missing dump file: ${DUMP_PATH}" >&2
   echo "[restore] run 'make init' first or set DUMP_PATH" >&2
   exit 1
 fi
 
+PG_RESTORE_BIN="$(resolve_pg_restore_bin)"
+
 if [[ -n "${POSTGRES_USER:-}" && -n "${POSTGRES_DB:-}" ]]; then
   echo "[restore] restoring ${DUMP_PATH} into ${POSTGRES_DB} (docker-entrypoint mode)"
-  pg_restore -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" "${DUMP_PATH}"
+  if ! "${PG_RESTORE_BIN}" -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" "${DUMP_PATH}"; then
+    echo "[restore] restore failed using ${PG_RESTORE_BIN}" >&2
+    echo "[restore] If you see 'unsupported version ... in file header', install newer PostgreSQL client tools." >&2
+    exit 1
+  fi
   exit 0
 fi
 
@@ -22,10 +54,14 @@ ISUCONP_DB_PASSWORD="${ISUCONP_DB_PASSWORD:-isuconp}"
 ISUCONP_DB_NAME="${ISUCONP_DB_NAME:-isuconp}"
 
 echo "[restore] restoring ${DUMP_PATH} into ${ISUCONP_DB_NAME} on ${ISUCONP_DB_HOST}:${ISUCONP_DB_PORT}"
-PGPASSWORD="${ISUCONP_DB_PASSWORD}" \
-  pg_restore \
+if ! PGPASSWORD="${ISUCONP_DB_PASSWORD}" \
+  "${PG_RESTORE_BIN}" \
     -h "${ISUCONP_DB_HOST}" \
     -p "${ISUCONP_DB_PORT}" \
     -U "${ISUCONP_DB_USER}" \
     -d "${ISUCONP_DB_NAME}" \
-    "${DUMP_PATH}"
+    "${DUMP_PATH}"; then
+  echo "[restore] restore failed using ${PG_RESTORE_BIN}" >&2
+  echo "[restore] If you see 'unsupported version ... in file header', install newer PostgreSQL client tools." >&2
+  exit 1
+fi
