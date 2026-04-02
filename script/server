@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT_DIR}"
+
+usage() {
+  cat <<'EOF'
+Usage: script/server [gunicorn options...]
+
+Start the web application with gunicorn.
+This script uses `exec uv run ...` so signals are handled by gunicorn directly.
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Error: '${cmd}' is required but not installed." >&2
+    exit 1
+  fi
+}
+
+log() {
+  echo "[server] $*"
+}
+
+require_cmd uv
+
+if [[ ! -x .venv/bin/gunicorn ]]; then
+  log ".venv/bin/gunicorn not found. Running uv sync"
+  uv sync
+fi
+
+if [[ ! -x .venv/bin/gunicorn ]]; then
+  echo "Error: failed to prepare .venv/bin/gunicorn. Check uv sync output." >&2
+  exit 1
+fi
+
+# macOS + gunicorn worker fork() + Objective-C runtime issue workaround.
+# `exec` simplifies signal handling, but does not avoid this fork-time crash.
+# Allow users to override by setting OBJC_DISABLE_INITIALIZE_FORK_SAFETY explicitly.
+if [[ "$(uname -s)" == "Darwin" && -z "${OBJC_DISABLE_INITIALIZE_FORK_SAFETY:-}" ]]; then
+  export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+  log "Set OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES for macOS gunicorn compatibility"
+fi
+
+GUNICORN_BIND="${ISUCONP_SERVER_BIND:-0.0.0.0:8080}"
+GUNICORN_APP="${ISUCONP_SERVER_APP:-app:app}"
+
+# Local defaults for app.py env vars.
+# Prefer IPv4 loopback to avoid accidental connection to a different IPv6 localhost PostgreSQL.
+export ISUCONP_DB_HOST="${ISUCONP_DB_HOST:-127.0.0.1}"
+export ISUCONP_DB_PORT="${ISUCONP_DB_PORT:-5432}"
+export ISUCONP_DB_USER="${ISUCONP_DB_USER:-isuconp}"
+export ISUCONP_DB_PASSWORD="${ISUCONP_DB_PASSWORD:-}"
+export ISUCONP_DB_NAME="${ISUCONP_DB_NAME:-isuconp}"
+export ISUCONP_MEMCACHED_ADDRESS="${ISUCONP_MEMCACHED_ADDRESS:-127.0.0.1:11211}"
+
+log "Starting gunicorn ${GUNICORN_APP} on ${GUNICORN_BIND}"
+log "Using DB ${ISUCONP_DB_USER}@${ISUCONP_DB_HOST}:${ISUCONP_DB_PORT}/${ISUCONP_DB_NAME}"
+log "Using Memcached ${ISUCONP_MEMCACHED_ADDRESS}"
+exec uv run gunicorn \
+  "${GUNICORN_APP}" \
+  -b "${GUNICORN_BIND}" \
+  --log-file - \
+  --access-logfile - \
+  "$@"

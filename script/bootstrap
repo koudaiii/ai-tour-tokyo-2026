@@ -1,0 +1,399 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+WITH_DB_SEED=0
+WITH_COMPOSE=0
+SKIP_DB_CHECK=0
+
+usage() {
+  cat <<'EOF'
+Usage: script/bootstrap [options]
+
+Prepare local development environment for private-isu.
+
+Options:
+  --with-db-seed   Run `make init` (sample data download/conversion)
+  --with-compose   Run `docker compose up -d --build`
+  --skip-db-check  Skip PostgreSQL schema/permission checks
+  -h, --help       Show this help
+Environment:
+  ISUCONP_DATABASE_URL  PostgreSQL connection URL (takes precedence over ISUCONP_DB_*)
+EOF
+}
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Error: '${cmd}' is required but not installed." >&2
+    exit 1
+  fi
+}
+
+log() {
+  echo "[bootstrap] $*"
+}
+
+error_exit() {
+  echo "Error: $*" >&2
+  exit 1
+}
+
+DB_CHECK_HOST=""
+LAST_DB_ERROR=""
+DEFAULTED_DB_HOST=0
+
+run_sql() {
+  local sql="$1"
+  local -a cmd
+  if [[ -n "${ISUCONP_DATABASE_URL:-}" ]]; then
+    cmd=(
+      psql
+      "${ISUCONP_DATABASE_URL}"
+      -v ON_ERROR_STOP=1
+      -Atqc "${sql}"
+    )
+    "${cmd[@]}"
+  else
+    cmd=(psql)
+    if [[ -n "${DB_CHECK_HOST}" ]]; then
+      cmd+=(-h "${DB_CHECK_HOST}")
+    fi
+    cmd+=(
+      -p "${ISUCONP_DB_PORT}"
+      -U "${ISUCONP_DB_USER}"
+      -d "${ISUCONP_DB_NAME}"
+      -v ON_ERROR_STOP=1
+      -Atqc "${sql}"
+    )
+
+    if [[ -n "${ISUCONP_DB_PASSWORD:-}" ]]; then
+      PGPASSWORD="${ISUCONP_DB_PASSWORD}" "${cmd[@]}"
+    else
+      "${cmd[@]}"
+    fi
+  fi
+}
+
+wait_for_db() {
+  local retry=30
+  while (( retry > 0 )); do
+    if run_sql "SELECT 1;" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+    retry=$((retry - 1))
+  done
+  return 1
+}
+
+probe_db_connection() {
+  local -a hosts=()
+  local host
+  local output
+
+  if [[ -n "${ISUCONP_DATABASE_URL:-}" ]]; then
+    DB_CHECK_HOST=""
+    if output="$(run_sql "SELECT 1;" 2>&1)"; then
+      LAST_DB_ERROR=""
+      return 0
+    fi
+    LAST_DB_ERROR="${output}"
+    return 1
+  fi
+
+  if [[ -n "${ISUCONP_DB_HOST:-}" && "${DEFAULTED_DB_HOST}" -eq 0 ]]; then
+    hosts=("${ISUCONP_DB_HOST}")
+  else
+    hosts=("localhost" "127.0.0.1" "")
+  fi
+
+  for host in "${hosts[@]}"; do
+    DB_CHECK_HOST="${host}"
+    if output="$(run_sql "SELECT 1;" 2>&1)"; then
+      LAST_DB_ERROR=""
+      if [[ -n "${host}" ]]; then
+        export ISUCONP_DB_HOST="${host}"
+      fi
+      return 0
+    fi
+    LAST_DB_ERROR="${output}"
+  done
+  return 1
+}
+
+run_admin_sql() {
+  local db="$1"
+  local sql="$2"
+  local -a cmd=(psql -p "${ISUCONP_DB_PORT}" -d "${db}" -v ON_ERROR_STOP=1 -Atqc "${sql}")
+  if [[ -n "${DB_CHECK_HOST}" ]]; then
+    cmd=(psql -h "${DB_CHECK_HOST}" -p "${ISUCONP_DB_PORT}" -d "${db}" -v ON_ERROR_STOP=1 -Atqc "${sql}")
+  fi
+  "${cmd[@]}"
+}
+
+try_fix_local_role_and_db() {
+  local role_esc db_esc pass_esc
+  local db_exists
+
+  role_esc="${ISUCONP_DB_USER//\'/\'\'}"
+  db_esc="${ISUCONP_DB_NAME//\'/\'\'}"
+  pass_esc="${ISUCONP_DB_PASSWORD//\'/\'\'}"
+
+  if ! run_admin_sql "postgres" "SELECT 1;" >/dev/null 2>&1; then
+    return 1
+  fi
+
+  log "Attempting to create missing role/database on local PostgreSQL"
+  run_admin_sql "postgres" "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${role_esc}') THEN CREATE ROLE \"${ISUCONP_DB_USER}\" LOGIN PASSWORD '${pass_esc}'; END IF; END \$\$;"
+
+  db_exists="$(run_admin_sql "postgres" "SELECT 1 FROM pg_database WHERE datname = '${db_esc}';" || true)"
+  if [[ "${db_exists}" != "1" ]]; then
+    run_admin_sql "postgres" "CREATE DATABASE \"${ISUCONP_DB_NAME}\" OWNER \"${ISUCONP_DB_USER}\";"
+  fi
+
+  run_admin_sql "postgres" "GRANT CONNECT ON DATABASE \"${ISUCONP_DB_NAME}\" TO \"${ISUCONP_DB_USER}\";" >/dev/null 2>&1 || true
+  return 0
+}
+
+try_fix_local_privileges() {
+  if ! run_admin_sql "${ISUCONP_DB_NAME}" "SELECT 1;" >/dev/null 2>&1; then
+    return 1
+  fi
+
+  log "Attempting to grant missing table/sequence privileges on local PostgreSQL"
+  run_admin_sql "${ISUCONP_DB_NAME}" "GRANT USAGE ON SCHEMA public TO \"${ISUCONP_DB_USER}\";"
+  run_admin_sql "${ISUCONP_DB_NAME}" "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO \"${ISUCONP_DB_USER}\";"
+  run_admin_sql "${ISUCONP_DB_NAME}" "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO \"${ISUCONP_DB_USER}\";"
+  return 0
+}
+
+check_db_state() {
+  local missing_tables=()
+  local missing_table_privs=()
+  local missing_seq_privs=()
+  local table
+  local priv
+  local has_priv
+  local seq_list
+
+  if [[ -n "${ISUCONP_DATABASE_URL:-}" ]]; then
+    log "Checking PostgreSQL connection via ISUCONP_DATABASE_URL"
+  elif [[ -n "${ISUCONP_DB_HOST:-}" ]]; then
+    log "Checking PostgreSQL connection: ${ISUCONP_DB_USER}@${ISUCONP_DB_HOST}:${ISUCONP_DB_PORT}/${ISUCONP_DB_NAME}"
+  else
+    log "Checking PostgreSQL connection: ${ISUCONP_DB_USER}@{127.0.0.1|localhost|socket}:${ISUCONP_DB_PORT}/${ISUCONP_DB_NAME}"
+  fi
+
+  if ! probe_db_connection; then
+    local missing_role
+    missing_role="$(printf '%s' "${LAST_DB_ERROR}" | sed -n 's/.*role "\([^"]*\)" does not exist.*/\1/p' | head -n1)"
+
+    if [[ "${LAST_DB_ERROR}" == *"invalid URI"* || "${LAST_DB_ERROR}" == *"could not translate host name"* ]]; then
+      error_exit "Invalid ISUCONP_DATABASE_URL or unreachable host. Details: ${LAST_DB_ERROR}"
+    fi
+    if [[ -n "${missing_role}" ]]; then
+      if [[ -z "${ISUCONP_DATABASE_URL}" && ( "${DB_CHECK_HOST}" == "localhost" || "${DB_CHECK_HOST}" == "127.0.0.1" || -z "${DB_CHECK_HOST}" ) ]]; then
+        if try_fix_local_role_and_db && probe_db_connection; then
+          log "Created missing role/database and reconnected successfully"
+        else
+          error_exit "PostgreSQL role '${missing_role}' does not exist and automatic local fix failed. Run manually: psql -d postgres -c \"CREATE ROLE ${missing_role} LOGIN PASSWORD '...';\""
+        fi
+      else
+        error_exit "PostgreSQL role '${missing_role}' does not exist. Create it first, for example: psql -d postgres -c \"CREATE ROLE ${missing_role} LOGIN PASSWORD '...';\""
+      fi
+    fi
+    if ! probe_db_connection; then
+      error_exit "Cannot connect to PostgreSQL with current ISUCONP_DB_* settings. Details: ${LAST_DB_ERROR}"
+    fi
+  fi
+
+  for table in users posts comments; do
+    if [[ "$(run_sql "SELECT to_regclass('public.${table}') IS NOT NULL;")" != "t" ]]; then
+      missing_tables+=("${table}")
+    fi
+  done
+
+  for table in users posts comments; do
+    for priv in SELECT INSERT UPDATE DELETE; do
+      has_priv="$(run_sql "SELECT has_table_privilege(current_user, 'public.${table}', '${priv}');")"
+      if [[ "${has_priv}" != "t" ]]; then
+        missing_table_privs+=("${table}:${priv}")
+      fi
+    done
+  done
+
+  seq_list="$(run_sql "SELECT COALESCE(string_agg(sequence_name, E'\n'), '') FROM information_schema.sequences WHERE sequence_schema = 'public';")"
+  if [[ -n "${seq_list}" ]]; then
+    while IFS= read -r seq; do
+      [[ -z "${seq}" ]] && continue
+      has_priv="$(run_sql "SELECT has_sequence_privilege(current_user, 'public.${seq}', 'USAGE');")"
+      if [[ "${has_priv}" != "t" ]]; then
+        missing_seq_privs+=("${seq}:USAGE")
+      fi
+    done <<< "${seq_list}"
+  fi
+
+  if (( ${#missing_tables[@]} > 0 )); then
+    error_exit "Missing tables: ${missing_tables[*]}. Load schema/data with: psql -U ${ISUCONP_DB_USER} -d ${ISUCONP_DB_NAME} -f sql/0_schema.sql && psql -U ${ISUCONP_DB_USER} -d ${ISUCONP_DB_NAME} -f sql/1_data.sql"
+  fi
+
+  if (( ${#missing_table_privs[@]} > 0 )) || (( ${#missing_seq_privs[@]} > 0 )); then
+    if [[ -z "${ISUCONP_DATABASE_URL}" && ( "${DB_CHECK_HOST}" == "localhost" || "${DB_CHECK_HOST}" == "127.0.0.1" || -z "${DB_CHECK_HOST}" ) ]]; then
+      if try_fix_local_privileges; then
+        # Re-check once after automatic grant.
+        missing_table_privs=()
+        missing_seq_privs=()
+
+        for table in users posts comments; do
+          for priv in SELECT INSERT UPDATE DELETE; do
+            has_priv="$(run_sql "SELECT has_table_privilege(current_user, 'public.${table}', '${priv}');")"
+            if [[ "${has_priv}" != "t" ]]; then
+              missing_table_privs+=("${table}:${priv}")
+            fi
+          done
+        done
+
+        seq_list="$(run_sql "SELECT COALESCE(string_agg(sequence_name, E'\n'), '') FROM information_schema.sequences WHERE sequence_schema = 'public';")"
+        if [[ -n "${seq_list}" ]]; then
+          while IFS= read -r seq; do
+            [[ -z "${seq}" ]] && continue
+            has_priv="$(run_sql "SELECT has_sequence_privilege(current_user, 'public.${seq}', 'USAGE');")"
+            if [[ "${has_priv}" != "t" ]]; then
+              missing_seq_privs+=("${seq}:USAGE")
+            fi
+          done <<< "${seq_list}"
+        fi
+
+        if (( ${#missing_table_privs[@]} > 0 )) || (( ${#missing_seq_privs[@]} > 0 )); then
+          error_exit "Insufficient DB privileges. Missing table privileges: ${missing_table_privs[*]:-(none)} Missing sequence privileges: ${missing_seq_privs[*]:-(none)}. Grant example: GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${ISUCONP_DB_USER}; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${ISUCONP_DB_USER};"
+        fi
+      else
+        error_exit "Insufficient DB privileges and automatic local grant failed. Missing table privileges: ${missing_table_privs[*]:-(none)} Missing sequence privileges: ${missing_seq_privs[*]:-(none)}."
+      fi
+    else
+      error_exit "Insufficient DB privileges. Missing table privileges: ${missing_table_privs[*]:-(none)} Missing sequence privileges: ${missing_seq_privs[*]:-(none)}. Grant example: GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${ISUCONP_DB_USER}; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${ISUCONP_DB_USER};"
+    fi
+  fi
+
+  log "PostgreSQL schema and permissions look good"
+}
+
+for arg in "$@"; do
+  case "${arg}" in
+    --with-db-seed)
+      WITH_DB_SEED=1
+      ;;
+    --with-compose)
+      WITH_COMPOSE=1
+      ;;
+    --skip-db-check)
+      SKIP_DB_CHECK=1
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Error: unknown option '${arg}'" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+cd "${ROOT_DIR}"
+
+export ISUCONP_DB_HOST="${ISUCONP_DB_HOST:-}"
+export ISUCONP_DB_PORT="${ISUCONP_DB_PORT:-}"
+export ISUCONP_DB_USER="${ISUCONP_DB_USER:-}"
+export ISUCONP_DB_PASSWORD="${ISUCONP_DB_PASSWORD:-}"
+export ISUCONP_DB_NAME="${ISUCONP_DB_NAME:-}"
+export ISUCONP_MEMCACHED_ADDRESS="${ISUCONP_MEMCACHED_ADDRESS:-127.0.0.1:11211}"
+export ISUCONP_DATABASE_URL="${ISUCONP_DATABASE_URL:-}"
+
+if [[ -z "${ISUCONP_DATABASE_URL}" ]]; then
+  if [[ -z "${ISUCONP_DB_HOST}" ]]; then
+    export ISUCONP_DB_HOST="localhost"
+    DEFAULTED_DB_HOST=1
+    log "ISUCONP_DB_HOST is not set. Using default: localhost"
+  fi
+  if [[ -z "${ISUCONP_DB_PORT}" ]]; then
+    export ISUCONP_DB_PORT="5432"
+    log "ISUCONP_DB_PORT is not set. Using default: 5432"
+  fi
+  if [[ -z "${ISUCONP_DB_USER}" ]]; then
+    export ISUCONP_DB_USER="isuconp"
+    log "ISUCONP_DB_USER is not set. Using default: isuconp"
+  fi
+  if [[ -z "${ISUCONP_DB_PASSWORD}" ]]; then
+    export ISUCONP_DB_PASSWORD="isuconp"
+    log "ISUCONP_DB_PASSWORD is not set. Using default: isuconp"
+  fi
+  if [[ -z "${ISUCONP_DB_NAME}" ]]; then
+    export ISUCONP_DB_NAME="isuconp"
+    log "ISUCONP_DB_NAME is not set. Using default: isuconp"
+  fi
+fi
+
+require_cmd make
+require_cmd curl
+require_cmd python3
+require_cmd bunzip2
+require_cmd unzip
+
+require_cmd uv
+if [[ "${SKIP_DB_CHECK}" -eq 0 ]]; then
+  require_cmd psql
+fi
+
+if [[ "${WITH_COMPOSE}" -eq 1 ]]; then
+  require_cmd docker
+  if ! docker compose version >/dev/null 2>&1; then
+    echo "Error: docker compose plugin is required." >&2
+    exit 1
+  fi
+fi
+
+if [[ "${WITH_DB_SEED}" -eq 1 ]]; then
+  log "Running make init (restore sample data)"
+  make init
+else
+  log "Skipping sample data restore (use --with-db-seed to run make init)"
+fi
+
+log "Running uv sync"
+uv sync
+
+if [[ "${WITH_COMPOSE}" -eq 1 ]]; then
+  if [[ -z "${ISUCONP_DATABASE_URL}" && -z "${ISUCONP_DB_HOST}" ]]; then
+    export ISUCONP_DB_HOST="127.0.0.1"
+  fi
+  log "Starting docker compose services"
+  docker compose up -d --build
+else
+  log "Skipping docker compose startup (use --with-compose to run containers)"
+fi
+
+if [[ "${SKIP_DB_CHECK}" -eq 0 ]]; then
+  if [[ "${WITH_COMPOSE}" -eq 1 ]]; then
+    log "Waiting for PostgreSQL to become ready"
+    if ! wait_for_db; then
+      error_exit "PostgreSQL is not ready after docker compose start"
+    fi
+  fi
+  check_db_state
+else
+  log "Skipping PostgreSQL checks (use default behavior to validate schema and permissions)"
+fi
+
+cat <<'EOF'
+
+Bootstrap completed.
+
+Helpful commands:
+  - Open: http://localhost:8080
+  - Start server: script/server
+  - Stop server: Ctrl+C in the terminal running script/server
+EOF
