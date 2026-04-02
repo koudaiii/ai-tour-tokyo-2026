@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT_DIR}"
+
+usage() {
+  cat <<'EOF'
+Usage: script/backup [options]
+
+Create PostgreSQL backup dump file and compress it with bzip2.
+
+Options:
+  -o, --output PATH  Output file path (default: sql/isuconp_pg17_YYYYMMDDHHmm.dump.bz2)
+  -h, --help         Show this help
+
+Environment:
+  ISUCONP_DATABASE_URL  PostgreSQL URL (takes precedence over ISUCONP_DB_*)
+  ISUCONP_DB_HOST       Default: localhost
+  ISUCONP_DB_PORT       Default: 5432
+  ISUCONP_DB_USER       Default: isuconp
+  ISUCONP_DB_PASSWORD   Default: isuconp
+  ISUCONP_DB_NAME       Default: isuconp
+EOF
+}
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Error: '${cmd}' is required but not installed." >&2
+    exit 1
+  fi
+}
+
+log() {
+  echo "[backup] $*"
+}
+
+OUTPUT=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o|--output)
+      OUTPUT="${2:-}"
+      if [[ -z "${OUTPUT}" ]]; then
+        echo "Error: --output requires a value." >&2
+        exit 1
+      fi
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Error: unknown option '$1'" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+require_cmd pg_dump
+require_cmd bzip2
+
+if [[ -z "${OUTPUT}" ]]; then
+  OUTPUT="sql/isuconp_pg17_$(date +%Y%m%d%H%M).dump.bz2"
+fi
+
+mkdir -p "$(dirname "${OUTPUT}")"
+
+RAW_DUMP="${OUTPUT}"
+if [[ "${RAW_DUMP}" == *.bz2 ]]; then
+  RAW_DUMP="${RAW_DUMP%.bz2}"
+fi
+
+if [[ -n "${ISUCONP_DATABASE_URL:-}" ]]; then
+  log "Creating backup using ISUCONP_DATABASE_URL"
+  pg_dump "${ISUCONP_DATABASE_URL}" -Fc -Z9 -f "${RAW_DUMP}"
+else
+  ISUCONP_DB_HOST="${ISUCONP_DB_HOST:-localhost}"
+  ISUCONP_DB_PORT="${ISUCONP_DB_PORT:-5432}"
+  ISUCONP_DB_USER="${ISUCONP_DB_USER:-isuconp}"
+  ISUCONP_DB_PASSWORD="${ISUCONP_DB_PASSWORD:-isuconp}"
+  ISUCONP_DB_NAME="${ISUCONP_DB_NAME:-isuconp}"
+
+  log "Creating backup from ${ISUCONP_DB_USER}@${ISUCONP_DB_HOST}:${ISUCONP_DB_PORT}/${ISUCONP_DB_NAME}"
+  PGPASSWORD="${ISUCONP_DB_PASSWORD}" pg_dump \
+    -h "${ISUCONP_DB_HOST}" \
+    -p "${ISUCONP_DB_PORT}" \
+    -U "${ISUCONP_DB_USER}" \
+    -d "${ISUCONP_DB_NAME}" \
+    -Fc -Z9 \
+    -f "${RAW_DUMP}"
+fi
+
+log "Compressing with bzip2"
+bzip2 -f "${RAW_DUMP}"
+if [[ "${RAW_DUMP}.bz2" != "${OUTPUT}" ]]; then
+  mv -f "${RAW_DUMP}.bz2" "${OUTPUT}"
+fi
+
+log "Backup created: ${OUTPUT}"
+shasum -a 256 "${OUTPUT}"

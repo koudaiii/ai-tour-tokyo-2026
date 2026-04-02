@@ -2,26 +2,24 @@
   become: yes
   gather_facts: yes
   tasks:
-    - name: download mysql dump
-      get_url: url=https://github.com/catatsuy/private-isu/releases/download/img/dump.sql.bz2 dest=/home/isucon/backup/dump.sql.bz2 force=1
+    - name: download postgresql dump (bz2)
+      get_url:
+        url: https://github.com/koudaiii/ai-tour-for-partner-2026-track4-session1/releases/download/db-dump-latest/isuconp_pg17_latest.dump.bz2
+        dest: /home/isucon/backup/isuconp_data.dump.bz2
+        force: 1
+
     - name: decompress dump
-      shell: bunzip2 -k -f /home/isucon/backup/dump.sql.bz2
-    - name: copy convert script
-      copy:
-        src: "{{ playbook_dir }}/../../../sql/convert_dump.py"
-        dest: /home/isucon/backup/convert_dump.py
-        owner: isucon
-        mode: '0755'
-    - name: convert mysql dump to postgresql
-      shell: python3 /home/isucon/backup/convert_dump.py /home/isucon/backup/dump.sql /home/isucon/backup/1_data.sql
+      shell: bunzip2 -k -f /home/isucon/backup/isuconp_data.dump.bz2
+
     - name: load schema
       become_user: isucon
-      shell: psql -U isuconp -d isuconp -f /home/isucon/private_isu/sql/0_schema.sql
-    - name: load data
+      shell: psql -U isuconp -d isuconp -f /home/isucon/private_isu/sql/bootstrap_create_table.sql
+
+    - name: load data from postgres dump
       become_user: isucon
-      shell: psql -U isuconp -d isuconp -f /home/isucon/backup/1_data.sql
+      shell: pg_restore -U isuconp -d isuconp /home/isucon/backup/isuconp_data.dump
+
     - name: cleanup intermediate files
       file: path={{ item }} state=absent
       with_items:
-        - /home/isucon/backup/dump.sql
-        - /home/isucon/backup/convert_dump.py
+        - /home/isucon/backup/isuconp_data.dump

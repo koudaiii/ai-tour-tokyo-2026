@@ -2,13 +2,13 @@
 
 ## Project Structure & Module Organization
 - Application files (`app.py`, `pyproject.toml`, `Dockerfile`, `compose.yml`) are at the repository root.
-- `sql/` holds PostgreSQL schema (`0_schema.sql`), converted data (`1_data.sql`), and the conversion script (`convert_dump.py`).
+- `sql/` holds PostgreSQL schema (`bootstrap_create_table.sql`), PostgreSQL dump (`isuconp_data.dump`), and bootstrap helper SQL files (`bootstrap_*.sql`).
+- `script/restore` restores `sql/isuconp_data.dump` during Docker PostgreSQL initialization.
 - `templates/` contains Jinja2 HTML templates; `public/` holds static assets (CSS, JS, images).
 - `benchmarker/` contains the Go load tester, while `provisioning/` tracks Ansible roles for operational parity.
 
 ## Build, Test, and Development Commands
-- `make init`: download the canonical MySQL dump and image fixtures.
-- Data conversion: `cd sql && python3 convert_dump.py dump.sql 1_data.sql` to convert the MySQL dump to PostgreSQL format.
+- `make init`: download the canonical PostgreSQL dump and benchmark image fixtures.
 - `docker compose up`: run nginx, the app tier, PostgreSQL, and Memcached locally.
 - `cd benchmarker && make && ./bin/benchmarker -t "http://localhost:8080" -u ./userdata`: rebuild and execute the scorer after optimizations.
 
@@ -19,7 +19,7 @@
 ## Testing Guidelines
 - Supplement changes with unit tests when touching core logic (`pytest`) even if suites are sparse.
 - Benchmark every performance tweak and note the score delta in your PR description.
-- For schema updates, load `sql/0_schema.sql` and `sql/1_data.sql` into local PostgreSQL and smoke-test login plus timeline flows.
+- For schema updates, load `sql/bootstrap_create_table.sql` and restore `sql/isuconp_data.dump` with `pg_restore`, then smoke-test login plus timeline flows.
 
 ## Commit & Pull Request Guidelines
 - Use imperative commit subjects (`optimize timeline query`); dependency bumps often follow `chore(deps):`/`fix(deps):` patterns.

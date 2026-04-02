@@ -47,7 +47,8 @@ services:
       POSTGRES_DB: isuconp
     volumes:
       - postgres:/var/lib/postgresql/data
-      - ./sql:/docker-entrypoint-initdb.d
+      - ./sql/isuconp_data.dump:/docker-entrypoint-initdb.d/isuconp_data.dump:ro
+      - ./script/restore:/docker-entrypoint-initdb.d/1_restore:ro
     ports:
       - "5432:5432"
     networks:

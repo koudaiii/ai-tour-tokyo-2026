@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT_DIR}"
+
+usage() {
+  cat <<'EOF'
+Usage: script/upload-to-github [options]
+
+Upload dump file to GitHub Releases.
+
+Options:
+  -f, --file PATH     Dump file path to upload (default: latest sql/*.dump.bz2)
+  -t, --tag TAG       Release tag (default: db-dump-YYYYMMDDHHmm)
+      --title TITLE   Release title for create (default: DB dump YYYY-MM-DD HH:mm)
+      --notes TEXT    Release notes for create
+      --no-latest     Do not update db-dump-latest alias release
+  -h, --help          Show this help
+EOF
+}
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Error: '${cmd}' is required but not installed." >&2
+    exit 1
+  fi
+}
+
+log() {
+  echo "[upload] $*"
+}
+
+DUMP_FILE=""
+TAG="db-dump-$(date +%Y%m%d%H%M)"
+TITLE="DB dump $(date +%Y-%m-%d\ %H:%M)"
+NOTES="PostgreSQL dump uploaded on $(date +%Y-%m-%d\ %H:%M)."
+UPDATE_LATEST=1
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -f|--file)
+      DUMP_FILE="${2:-}"
+      [[ -n "${DUMP_FILE}" ]] || { echo "Error: --file requires a value." >&2; exit 1; }
+      shift 2
+      ;;
+    -t|--tag)
+      TAG="${2:-}"
+      [[ -n "${TAG}" ]] || { echo "Error: --tag requires a value." >&2; exit 1; }
+      shift 2
+      ;;
+    --title)
+      TITLE="${2:-}"
+      [[ -n "${TITLE}" ]] || { echo "Error: --title requires a value." >&2; exit 1; }
+      shift 2
+      ;;
+    --notes)
+      NOTES="${2:-}"
+      [[ -n "${NOTES}" ]] || { echo "Error: --notes requires a value." >&2; exit 1; }
+      shift 2
+      ;;
+    --no-latest)
+      UPDATE_LATEST=0
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Error: unknown option '$1'" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+require_cmd gh
+require_cmd git
+require_cmd shasum
+
+if [[ -z "${DUMP_FILE}" ]]; then
+  DUMP_FILE="$(ls -1t sql/*.dump.bz2 2>/dev/null | head -n1 || true)"
+  if [[ -z "${DUMP_FILE}" ]]; then
+    DUMP_FILE="$(ls -1t sql/*.dump 2>/dev/null | head -n1 || true)"
+  fi
+  if [[ -z "${DUMP_FILE}" ]]; then
+    echo "Error: dump file not found. Use --file PATH." >&2
+    exit 1
+  fi
+fi
+
+if [[ ! -f "${DUMP_FILE}" ]]; then
+  echo "Error: dump file not found: ${DUMP_FILE}" >&2
+  exit 1
+fi
+
+if ! gh auth status >/dev/null 2>&1; then
+  echo "Error: gh is not authenticated. Run: gh auth login" >&2
+  exit 1
+fi
+
+REPO="$(git remote get-url origin | sed -E 's#^git@github.com:##; s#^https://github.com/##; s#\.git$##')"
+FILE_NAME="$(basename "${DUMP_FILE}")"
+
+log "Repository: ${REPO}"
+log "File: ${DUMP_FILE}"
+log "SHA256: $(shasum -a 256 "${DUMP_FILE}" | awk '{print $1}')"
+
+if gh release view "${TAG}" --repo "${REPO}" >/dev/null 2>&1; then
+  log "Release tag '${TAG}' exists. Uploading asset."
+  gh release upload "${TAG}" "${DUMP_FILE}" --clobber --repo "${REPO}"
+else
+  log "Release tag '${TAG}' does not exist. Creating release and uploading asset."
+  gh release create "${TAG}" "${DUMP_FILE}" \
+    --title "${TITLE}" \
+    --notes "${NOTES}" \
+    --repo "${REPO}"
+fi
+
+URL="https://github.com/${REPO}/releases/tag/${TAG}"
+log "Done: ${URL}"
+
+if [[ "${UPDATE_LATEST}" -eq 1 ]]; then
+  LATEST_TAG="db-dump-latest"
+  LATEST_ASSET="isuconp_pg17_latest.dump.bz2"
+  TMP_LATEST_PATH="/tmp/${LATEST_ASSET}"
+
+  cp -f "${DUMP_FILE}" "${TMP_LATEST_PATH}"
+  if gh release view "${LATEST_TAG}" --repo "${REPO}" >/dev/null 2>&1; then
+    log "Updating latest alias release '${LATEST_TAG}'"
+    gh release upload "${LATEST_TAG}" "${TMP_LATEST_PATH}" --clobber --repo "${REPO}"
+  else
+    log "Creating latest alias release '${LATEST_TAG}'"
+    gh release create "${LATEST_TAG}" "${TMP_LATEST_PATH}" \
+      --title "DB dump latest" \
+      --notes "Latest PostgreSQL dump alias." \
+      --repo "${REPO}"
+  fi
+  rm -f "${TMP_LATEST_PATH}"
+  log "Latest alias: https://github.com/${REPO}/releases/tag/${LATEST_TAG}"
+fi

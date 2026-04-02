@@ -46,14 +46,24 @@ DEFAULTED_DB_HOST=0
 
 run_sql() {
   local sql="$1"
+  run_sql_file /dev/stdin <<<"${sql}"
+}
+
+run_sql_file() {
+  local file="$1"
+  shift
   local -a cmd
   if [[ -n "${ISUCONP_DATABASE_URL:-}" ]]; then
     cmd=(
       psql
       "${ISUCONP_DATABASE_URL}"
       -v ON_ERROR_STOP=1
-      -Atqc "${sql}"
+      -Atqf "${file}"
     )
+    while [[ $# -gt 0 ]]; do
+      cmd+=(-v "$1")
+      shift
+    done
     "${cmd[@]}"
   else
     cmd=(psql)
@@ -65,8 +75,12 @@ run_sql() {
       -U "${ISUCONP_DB_USER}"
       -d "${ISUCONP_DB_NAME}"
       -v ON_ERROR_STOP=1
-      -Atqc "${sql}"
+      -Atqf "${file}"
     )
+    while [[ $# -gt 0 ]]; do
+      cmd+=(-v "$1")
+      shift
+    done
 
     if [[ -n "${ISUCONP_DB_PASSWORD:-}" ]]; then
       PGPASSWORD="${ISUCONP_DB_PASSWORD}" "${cmd[@]}"
@@ -126,34 +140,46 @@ probe_db_connection() {
 run_admin_sql() {
   local db="$1"
   local sql="$2"
-  local -a cmd=(psql -p "${ISUCONP_DB_PORT}" -d "${db}" -v ON_ERROR_STOP=1 -Atqc "${sql}")
+  run_admin_sql_file "${db}" /dev/stdin <<<"${sql}"
+}
+
+run_admin_sql_file() {
+  local db="$1"
+  local file="$2"
+  shift 2
+  local -a cmd=(psql -p "${ISUCONP_DB_PORT}" -d "${db}" -v ON_ERROR_STOP=1 -Atqf "${file}")
   if [[ -n "${DB_CHECK_HOST}" ]]; then
-    cmd=(psql -h "${DB_CHECK_HOST}" -p "${ISUCONP_DB_PORT}" -d "${db}" -v ON_ERROR_STOP=1 -Atqc "${sql}")
+    cmd=(psql -h "${DB_CHECK_HOST}" -p "${ISUCONP_DB_PORT}" -d "${db}" -v ON_ERROR_STOP=1 -Atqf "${file}")
   fi
+  while [[ $# -gt 0 ]]; do
+    cmd+=(-v "$1")
+    shift
+  done
   "${cmd[@]}"
 }
 
 try_fix_local_role_and_db() {
-  local role_esc db_esc pass_esc
   local db_exists
-
-  role_esc="${ISUCONP_DB_USER//\'/\'\'}"
-  db_esc="${ISUCONP_DB_NAME//\'/\'\'}"
-  pass_esc="${ISUCONP_DB_PASSWORD//\'/\'\'}"
 
   if ! run_admin_sql "postgres" "SELECT 1;" >/dev/null 2>&1; then
     return 1
   fi
 
   log "Attempting to create missing role/database on local PostgreSQL"
-  run_admin_sql "postgres" "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${role_esc}') THEN CREATE ROLE \"${ISUCONP_DB_USER}\" LOGIN PASSWORD '${pass_esc}'; END IF; END \$\$;"
+  run_admin_sql_file "postgres" "${ROOT_DIR}/sql/bootstrap_create_role.sql" \
+    "db_user=${ISUCONP_DB_USER}" \
+    "db_password=${ISUCONP_DB_PASSWORD}"
 
-  db_exists="$(run_admin_sql "postgres" "SELECT 1 FROM pg_database WHERE datname = '${db_esc}';" || true)"
+  db_exists="$(run_admin_sql_file "postgres" "${ROOT_DIR}/sql/bootstrap_check_database_exists.sql" "db_name=${ISUCONP_DB_NAME}" || true)"
   if [[ "${db_exists}" != "1" ]]; then
-    run_admin_sql "postgres" "CREATE DATABASE \"${ISUCONP_DB_NAME}\" OWNER \"${ISUCONP_DB_USER}\";"
+    run_admin_sql_file "postgres" "${ROOT_DIR}/sql/bootstrap_create_database.sql" \
+      "db_name=${ISUCONP_DB_NAME}" \
+      "db_user=${ISUCONP_DB_USER}"
   fi
 
-  run_admin_sql "postgres" "GRANT CONNECT ON DATABASE \"${ISUCONP_DB_NAME}\" TO \"${ISUCONP_DB_USER}\";" >/dev/null 2>&1 || true
+  run_admin_sql_file "postgres" "${ROOT_DIR}/sql/bootstrap_grant_connect_database.sql" \
+    "db_name=${ISUCONP_DB_NAME}" \
+    "db_user=${ISUCONP_DB_USER}" >/dev/null 2>&1 || true
   return 0
 }
 
@@ -163,10 +189,17 @@ try_fix_local_privileges() {
   fi
 
   log "Attempting to grant missing table/sequence privileges on local PostgreSQL"
-  run_admin_sql "${ISUCONP_DB_NAME}" "GRANT USAGE ON SCHEMA public TO \"${ISUCONP_DB_USER}\";"
-  run_admin_sql "${ISUCONP_DB_NAME}" "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO \"${ISUCONP_DB_USER}\";"
-  run_admin_sql "${ISUCONP_DB_NAME}" "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO \"${ISUCONP_DB_USER}\";"
+  run_admin_sql_file "${ISUCONP_DB_NAME}" "${ROOT_DIR}/sql/bootstrap_grant_local_privileges.sql" \
+    "db_user=${ISUCONP_DB_USER}"
   return 0
+}
+
+try_fix_local_schema() {
+  log "Attempting to load schema from sql/bootstrap_create_table.sql"
+  if run_sql_file "${ROOT_DIR}/sql/bootstrap_create_table.sql" >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
 }
 
 check_db_state() {
@@ -210,25 +243,25 @@ check_db_state() {
   fi
 
   for table in users posts comments; do
-    if [[ "$(run_sql "SELECT to_regclass('public.${table}') IS NOT NULL;")" != "t" ]]; then
+    if [[ "$(run_sql_file "${ROOT_DIR}/sql/bootstrap_check_table_exists.sql" "table_name=${table}")" != "t" ]]; then
       missing_tables+=("${table}")
     fi
   done
 
   for table in users posts comments; do
     for priv in SELECT INSERT UPDATE DELETE; do
-      has_priv="$(run_sql "SELECT has_table_privilege(current_user, 'public.${table}', '${priv}');")"
+      has_priv="$(run_sql_file "${ROOT_DIR}/sql/bootstrap_check_table_privilege.sql" "table_name=${table}" "privilege_name=${priv}")"
       if [[ "${has_priv}" != "t" ]]; then
         missing_table_privs+=("${table}:${priv}")
       fi
     done
   done
 
-  seq_list="$(run_sql "SELECT COALESCE(string_agg(sequence_name, E'\n'), '') FROM information_schema.sequences WHERE sequence_schema = 'public';")"
+  seq_list="$(run_sql_file "${ROOT_DIR}/sql/bootstrap_list_public_sequences.sql")"
   if [[ -n "${seq_list}" ]]; then
     while IFS= read -r seq; do
       [[ -z "${seq}" ]] && continue
-      has_priv="$(run_sql "SELECT has_sequence_privilege(current_user, 'public.${seq}', 'USAGE');")"
+      has_priv="$(run_sql_file "${ROOT_DIR}/sql/bootstrap_check_sequence_usage_privilege.sql" "sequence_name=${seq}")"
       if [[ "${has_priv}" != "t" ]]; then
         missing_seq_privs+=("${seq}:USAGE")
       fi
@@ -236,7 +269,20 @@ check_db_state() {
   fi
 
   if (( ${#missing_tables[@]} > 0 )); then
-    error_exit "Missing tables: ${missing_tables[*]}. Load schema/data with: psql -U ${ISUCONP_DB_USER} -d ${ISUCONP_DB_NAME} -f sql/0_schema.sql && psql -U ${ISUCONP_DB_USER} -d ${ISUCONP_DB_NAME} -f sql/1_data.sql"
+    if [[ -z "${ISUCONP_DATABASE_URL}" && ( "${DB_CHECK_HOST}" == "localhost" || "${DB_CHECK_HOST}" == "127.0.0.1" || -z "${DB_CHECK_HOST}" ) ]]; then
+      if try_fix_local_schema; then
+        missing_tables=()
+        for table in users posts comments; do
+          if [[ "$(run_sql_file "${ROOT_DIR}/sql/bootstrap_check_table_exists.sql" "table_name=${table}")" != "t" ]]; then
+            missing_tables+=("${table}")
+          fi
+        done
+      fi
+    fi
+
+    if (( ${#missing_tables[@]} > 0 )); then
+      error_exit "Missing tables: ${missing_tables[*]}. Load schema with: psql -U ${ISUCONP_DB_USER} -d ${ISUCONP_DB_NAME} -f sql/bootstrap_create_table.sql then restore dump with: pg_restore -U ${ISUCONP_DB_USER} -d ${ISUCONP_DB_NAME} sql/isuconp_data.dump"
+    fi
   fi
 
   if (( ${#missing_table_privs[@]} > 0 )) || (( ${#missing_seq_privs[@]} > 0 )); then
@@ -248,18 +294,18 @@ check_db_state() {
 
         for table in users posts comments; do
           for priv in SELECT INSERT UPDATE DELETE; do
-            has_priv="$(run_sql "SELECT has_table_privilege(current_user, 'public.${table}', '${priv}');")"
+            has_priv="$(run_sql_file "${ROOT_DIR}/sql/bootstrap_check_table_privilege.sql" "table_name=${table}" "privilege_name=${priv}")"
             if [[ "${has_priv}" != "t" ]]; then
               missing_table_privs+=("${table}:${priv}")
             fi
           done
         done
 
-        seq_list="$(run_sql "SELECT COALESCE(string_agg(sequence_name, E'\n'), '') FROM information_schema.sequences WHERE sequence_schema = 'public';")"
+        seq_list="$(run_sql_file "${ROOT_DIR}/sql/bootstrap_list_public_sequences.sql")"
         if [[ -n "${seq_list}" ]]; then
           while IFS= read -r seq; do
             [[ -z "${seq}" ]] && continue
-            has_priv="$(run_sql "SELECT has_sequence_privilege(current_user, 'public.${seq}', 'USAGE');")"
+            has_priv="$(run_sql_file "${ROOT_DIR}/sql/bootstrap_check_sequence_usage_privilege.sql" "sequence_name=${seq}")"
             if [[ "${has_priv}" != "t" ]]; then
               missing_seq_privs+=("${seq}:USAGE")
             fi

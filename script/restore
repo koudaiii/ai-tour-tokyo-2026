@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DUMP_PATH="/docker-entrypoint-initdb.d/isuconp_data.dump"
+
+if [[ ! -f "${DUMP_PATH}" ]]; then
+  echo "[initdb] missing dump file: ${DUMP_PATH}" >&2
+  echo "[initdb] run 'make init' before 'docker compose up'" >&2
+  exit 1
+fi
+
+echo "[initdb] restoring ${DUMP_PATH} into ${POSTGRES_DB}"
+pg_restore -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" "${DUMP_PATH}"
