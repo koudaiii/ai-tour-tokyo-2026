@@ -10,6 +10,7 @@
         creates: /home/isucon/private_isu/.venv/bin/activate
       tags:
         - python3
+
     - name: Bootstrap pip in the virtualenv
       shell: .venv/bin/python -m ensurepip --upgrade
       args:
@@ -17,6 +18,7 @@
         creates: /home/isucon/private_isu/.venv/bin/pip
       tags:
         - python3
+
     - name: Install UV CLI into virtualenv
       pip:
         virtualenv: /home/isucon/private_isu/.venv
