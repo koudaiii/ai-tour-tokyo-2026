@@ -1,1 +1,6 @@
-CREATE DATABASE :"db_name" OWNER :"db_user";
+SELECT format(
+  'CREATE DATABASE %I OWNER %I',
+  'isuconp',
+  'isuconp'
+)
+\gexec

@@ -113,6 +113,8 @@ make init
 make restore
 ```
 
+補足: `script/bootstrap` の自動チェック/修復で使うSQLヘルパーは、DB名/ユーザー/パスワードを `isuconp` 固定で扱います。
+
 3. アプリケーションを起動:
 ```sh
 uv sync

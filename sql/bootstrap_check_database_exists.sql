@@ -1,3 +1,3 @@
 SELECT 1
 FROM pg_database
-WHERE datname = :'db_name';
+WHERE datname = 'isuconp';

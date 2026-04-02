@@ -1,5 +1,5 @@
 .PHONY: init restore clean
-init: sql/isuconp_data.dump benchmarker/userdata/img
+init: sql/isuconp_data.dump benchmarker/userdata/img script/bootstrap
 
 restore:
 	DUMP_PATH=sql/isuconp_data.dump script/restore
@@ -14,6 +14,9 @@ sql/isuconp_data.dump: sql/isuconp_data.dump.bz2
 	cd sql && \
 	bunzip2 -k -f isuconp_data.dump.bz2 && \
 	test -f isuconp_data.dump
+
+script/bootstrap:
+	script/bootstrap
 
 benchmarker/userdata/img.zip:
 	cd benchmarker/userdata && \

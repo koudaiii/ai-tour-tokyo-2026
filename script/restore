@@ -2,6 +2,12 @@
 set -euo pipefail
 
 DUMP_PATH="${DUMP_PATH:-/docker-entrypoint-initdb.d/isuconp_data.dump}"
+RESTORE_COMMON_OPTS=(
+  --clean
+  --if-exists
+  --no-owner
+  --no-privileges
+)
 
 resolve_pg_restore_bin() {
   local best_bin=""
@@ -39,7 +45,11 @@ PG_RESTORE_BIN="$(resolve_pg_restore_bin)"
 
 if [[ -n "${POSTGRES_USER:-}" && -n "${POSTGRES_DB:-}" ]]; then
   echo "[restore] restoring ${DUMP_PATH} into ${POSTGRES_DB} (docker-entrypoint mode)"
-  if ! "${PG_RESTORE_BIN}" -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" "${DUMP_PATH}"; then
+  if ! "${PG_RESTORE_BIN}" \
+    "${RESTORE_COMMON_OPTS[@]}" \
+    -U "${POSTGRES_USER}" \
+    -d "${POSTGRES_DB}" \
+    "${DUMP_PATH}"; then
     echo "[restore] restore failed using ${PG_RESTORE_BIN}" >&2
     echo "[restore] If you see 'unsupported version ... in file header', install newer PostgreSQL client tools." >&2
     exit 1
@@ -56,6 +66,7 @@ ISUCONP_DB_NAME="${ISUCONP_DB_NAME:-isuconp}"
 echo "[restore] restoring ${DUMP_PATH} into ${ISUCONP_DB_NAME} on ${ISUCONP_DB_HOST}:${ISUCONP_DB_PORT}"
 if ! PGPASSWORD="${ISUCONP_DB_PASSWORD}" \
   "${PG_RESTORE_BIN}" \
+    "${RESTORE_COMMON_OPTS[@]}" \
     -h "${ISUCONP_DB_HOST}" \
     -p "${ISUCONP_DB_PORT}" \
     -U "${ISUCONP_DB_USER}" \

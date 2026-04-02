@@ -36,6 +36,13 @@ log() {
   echo "[backup] $*"
 }
 
+PG_DUMP_COMMON_OPTS=(
+  -Fc
+  -Z9
+  --no-owner
+  --no-privileges
+)
+
 OUTPUT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -75,7 +82,7 @@ fi
 
 if [[ -n "${ISUCONP_DATABASE_URL:-}" ]]; then
   log "Creating backup using ISUCONP_DATABASE_URL"
-  pg_dump "${ISUCONP_DATABASE_URL}" -Fc -Z9 -f "${RAW_DUMP}"
+  pg_dump "${ISUCONP_DATABASE_URL}" "${PG_DUMP_COMMON_OPTS[@]}" -f "${RAW_DUMP}"
 else
   ISUCONP_DB_HOST="${ISUCONP_DB_HOST:-localhost}"
   ISUCONP_DB_PORT="${ISUCONP_DB_PORT:-5432}"
@@ -84,12 +91,13 @@ else
   ISUCONP_DB_NAME="${ISUCONP_DB_NAME:-isuconp}"
 
   log "Creating backup from ${ISUCONP_DB_USER}@${ISUCONP_DB_HOST}:${ISUCONP_DB_PORT}/${ISUCONP_DB_NAME}"
+  log "Ownership/privileges metadata is excluded for portable restore"
   PGPASSWORD="${ISUCONP_DB_PASSWORD}" pg_dump \
+    "${PG_DUMP_COMMON_OPTS[@]}" \
     -h "${ISUCONP_DB_HOST}" \
     -p "${ISUCONP_DB_PORT}" \
     -U "${ISUCONP_DB_USER}" \
     -d "${ISUCONP_DB_NAME}" \
-    -Fc -Z9 \
     -f "${RAW_DUMP}"
 fi
 

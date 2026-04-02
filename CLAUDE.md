@@ -28,6 +28,8 @@ make init
 Docker Compose initializes PostgreSQL via `/docker-entrypoint-initdb.d` using:
 - `script/restore` (restores `sql/isuconp_data.dump` with `pg_restore`)
 
+Note: bootstrap SQL helpers under `sql/bootstrap_*.sql` are fixed to `isuconp` role/database for local auto-fix checks.
+
 ## Common Development Commands
 
 ### Building Applications
