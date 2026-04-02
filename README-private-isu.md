@@ -103,20 +103,14 @@ $ /home/isucon/private_isu/benchmarker/bin/benchmarker -u /home/isucon/private_i
 
 PostgreSQLとmemcachedを起動した上で、以下の手順を実行してください。
 
-1. MySQLダンプをPostgreSQL形式に変換:
+1. PostgreSQL用データを準備:
 ```sh
 make init
-cd sql
-bunzip2 -k ../webapp/sql/dump.sql.bz2 -c > dump.sql
-python3 convert_dump.py dump.sql 1_data.sql
-rm dump.sql
-cd ..
 ```
 
 2. PostgreSQLにデータをロード:
 ```sh
-psql -U isuconp -d isuconp -f sql/0_schema.sql
-psql -U isuconp -d isuconp -f sql/1_data.sql
+make restore
 ```
 
 3. アプリケーションを起動:
@@ -136,7 +130,7 @@ make
 
 #### Docker Compose
 
-起動前に`sql/1_data.sql`（PostgreSQL形式の変換済みデータ）が配置されている必要があります。データの変換方法は上記の手順を参照してください。
+起動前に`sql/isuconp_data.dump`（PostgreSQLロード用データ）が配置されている必要があります。`make init`で生成できます。初回起動時は`script/restore`がこのdumpを`pg_restore`します。
 
 ```sh
 docker compose up
