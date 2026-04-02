@@ -18,13 +18,6 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-require_cmd() {
-  local cmd="$1"
-  if ! command -v "${cmd}" >/dev/null 2>&1; then
-    echo "Error: '${cmd}' is required but not installed." >&2
-    exit 1
-  fi
-}
 
 log() {
   echo "[server] $*"
