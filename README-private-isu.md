@@ -42,7 +42,6 @@
 ```
 
 * [manual.md](/manual.md)は当日マニュアル。一部社内イベントを意識した記述があるので注意すること。
-* [public_manual.md](/public_manual.md) は事前公開レギュレーション
 
 ## OS
 
@@ -53,7 +52,7 @@ Ubuntu 24.04
 本フォークでは、以下の言語による参考実装のみを提供しています。
 * Python (Flask + gunicorn)
 
-データベースはMySQLから **PostgreSQL 17** に移行されています。
+データベースはMySQLから **PostgreSQL 18** に移行されています。
 
 ## 起動方法
 
@@ -61,15 +60,7 @@ Ubuntu 24.04
 
 * Docker Composeを利用したローカル開発を推奨します。
 
-### AMI
-
-セキュリティアップデートは行われないため、自己責任で利用してください。
-
-* 競技者用インスタンスでは、セキュリティグループでTCP/80番ポートへのアクセスを許可する必要があります。
-  * EC2インスタンス作成時のネットワーク設定で「インターネットからのHTTPトラフィックを許可する」といったオプションにチェックを入れても構いません。
-* ベンチマーカー用インスタンスには、コンピューティング最適化インスタンスなど、十分なスペックのマシンを利用することを推奨します。
-
-ベンチマーカーインスタンス上での実行方法
+### ベンチマーカーインスタンス上での実行方法
 
 ```sh
 $ sudo su - isucon
@@ -82,14 +73,6 @@ $ /home/isucon/private_isu.git/benchmarker/bin/benchmarker -u /home/isucon/priva
 $ sudo su - isucon
 $ /home/isucon/private_isu/benchmarker/bin/benchmarker -u /home/isucon/private_isu/benchmarker/userdata -t http://localhost
 ```
-
-起動直後はRubyの参考実装が動作しています。他の言語を使用する場合は、[`manual.md`](/manual.md)を参照して必要な作業を行ってください。
-
-現在配布しているAMIは、競技者用インスタンスにベンチマーカーを同梱したものです。
-
-以下のAMI IDで起動できます（リージョンは `ap-northeast-1` （アジアパシフィック (東京)））。これは特定日時のスナップショットのため、より新しいAMIが利用可能になっている場合があります。AWSコンソールで最新情報を確認することをお勧めします。推奨インスタンスタイプは、競技者用が`c7a.large`、ベンチマーカー用が`c7a.xlarge`です。
-
-競技者用 (Ubuntu 24.04, amd64): [`catatsuy_private_isu_amd64_20250615`](https://ap-northeast-1.console.aws.amazon.com/ec2/home?region=ap-northeast-1#ImageDetails:imageId=ami-002d61d6436f85f12)
 
 ### 手元で動かす
 
@@ -117,8 +100,7 @@ make restore
 
 3. アプリケーションを起動:
 ```sh
-uv sync
-.venv/bin/gunicorn app:app -b 0.0.0.0:8080
+script/server
 ```
 
 4. ベンチマーカーを実行:
@@ -135,7 +117,7 @@ make
 起動前に`sql/isuconp_data.dump`（PostgreSQLロード用データ）が配置されている必要があります。`make init`で生成できます。初回起動時は`script/restore`がこのdumpを`pg_restore`します。
 
 ```sh
-docker compose up
+script/bootstrap --with-compose
 ```
 
 ##### ポートの競合
@@ -192,35 +174,3 @@ docker run --network host --add-host host.docker.internal:host-gateway -i privat
     inet6 fe80::42:caff:fe63:c59/64 scope link
        valid_lft forever preferred_lft forever
 ```
-
-### cloud-init を利用して環境を構築する
-
-matsuu氏が提供する[`cloud-init`に対応したISUCON過去問題環境構築用のcloud-config集](https://github.com/matsuu/cloud-init-isucon/)を利用して、競技者用およびベンチマーカーインスタンスを構築できます。
-
-`cloud-init`に対応した多様な環境（例: AWS、Azure、Google Cloud、Oracle Cloud、さくらのクラウド、Multipass、VMwareなど）、つまりクラウドからローカル環境まで幅広く対応しています。
-
-Apple Silicon搭載のマシン上でローカル環境を構築する場合、Multipassの利用を推奨します。
-
-https://github.com/matsuu/cloud-init-isucon/tree/main/private-isu
-
-ISUCON過去問題の環境を「さくらのクラウド」で構築する | さくらのナレッジ https://knowledge.sakura.ad.jp/31520/
-
-### Cloud Formationを利用して構築する
-
-https://gist.github.com/tohutohu/024551682a9004da286b0abd6366fa55 を参照
-
-### 競技者用・ベンチマーカーインスタンスのセットアップ方法
-
-自身でインスタンスをセットアップしたい場合は、`provisioning/`ディレクトリ以下のスクリプトを参照してください。
-
-## 事例集
-
-* [インフラ研修 | Progate Path](https://app.path.progate.com/tasks/8ybBQYEXl73ajnNRGc-E0/preview)
-  * この問題を新卒研修で利用する場合の事前研修に利用しています
-* private-isuのベンチマーカーをLambdaで実行する仕組みを公開しました | PR TIMES 開発者ブログ https://developers.prtimes.jp/2024/01/29/private-isu-bench-lambda/
-* 日本CTO協会による合同ISUCON研修の紹介 - Pepabo Tech Portal https://tech.pepabo.com/2024/02/16/isucon-2023/
-
-## 他の言語実装
-
-* Rust実装 https://github.com/Romira915/private-isu-rust
-* Scala実装 https://github.com/catatsuy/private-isu/pull/140
