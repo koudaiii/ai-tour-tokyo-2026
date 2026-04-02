@@ -8,7 +8,7 @@ EnvironmentFile=/home/isucon/env.sh
 
 User=isucon
 Group=isucon
-ExecStart=/home/isucon/private_isu/.venv/bin/gunicorn app:app -b 0.0.0.0:8080 --log-file - --access-logfile -
+ExecStart=/home/isucon/private_isu/script/server
 ExecStop=/bin/kill -s QUIT $MAINPID
 
 [Install]

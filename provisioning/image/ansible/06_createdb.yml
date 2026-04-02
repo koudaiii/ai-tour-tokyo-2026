@@ -2,24 +2,14 @@
   become: yes
   gather_facts: yes
   tasks:
-    - name: download postgresql dump (bz2)
-      get_url:
-        url: https://github.com/koudaiii/ai-tour-for-partner-2026-track4-session1/releases/download/db-dump-latest/isuconp_pg17_latest.dump.bz2
-        dest: /home/isucon/backup/isuconp_data.dump.bz2
-        force: 1
-
-    - name: decompress dump
-      shell: bunzip2 -k -f /home/isucon/backup/isuconp_data.dump.bz2
-
-    - name: load schema
+    - name: download data artifacts via make init
       become_user: isucon
-      shell: psql -U isuconp -d isuconp -f /home/isucon/private_isu/sql/bootstrap_create_table.sql
+      shell: make init
+      args:
+        chdir: /home/isucon/private_isu
 
-    - name: load data from postgres dump
+    - name: restore postgres dump via make restore
       become_user: isucon
-      shell: pg_restore -U isuconp -d isuconp /home/isucon/backup/isuconp_data.dump
-
-    - name: cleanup intermediate files
-      file: path={{ item }} state=absent
-      with_items:
-        - /home/isucon/backup/isuconp_data.dump
+      shell: make restore
+      args:
+        chdir: /home/isucon/private_isu

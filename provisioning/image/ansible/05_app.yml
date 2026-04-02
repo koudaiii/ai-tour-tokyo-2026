@@ -5,11 +5,8 @@
   gather_facts: no
   vars:
     app_dir: "/home/isucon/private_isu"
-    tmp_dir: "/home/isucon/private_isu_tmp"
-    repo_url: "https://github.com/catatsuy/private-isu.git"
+    repo_url: "https://github.com/koudaiii/ai-tour-for-partner-2026-track4-session1.git"
   tasks:
-    - name: mkdir backup
-      file: path=/home/isucon/backup/ state=directory # As per instruction, can remain
     - name: Ensure application directory exists
       file:
         path: "{{ app_dir }}"
@@ -17,28 +14,9 @@
         owner: isucon
         group: isucon
         mode: '0755'
-    - name: Clone repository to temporary directory
+    - name: Clone repository to application directory
       git:
         repo: "{{ repo_url }}"
-        dest: "{{ tmp_dir }}"
+        dest: "{{ app_dir }}"
         depth: 1
         force: yes # force checkout to ensure clean state if tmp_dir somehow exists
-    - name: Copy webapp to application directory
-      copy:
-        src: "{{ tmp_dir }}/webapp/"
-        dest: "{{ app_dir }}/webapp/"
-        remote_src: yes
-        owner: isucon
-        group: isucon
-    - name: Conditionally copy benchmarker to application directory
-      copy:
-        src: "{{ tmp_dir }}/benchmarker/"
-        dest: "{{ app_dir }}/benchmarker/"
-        remote_src: yes
-        owner: isucon
-        group: isucon
-      when: allinone is defined and allinone
-    - name: Remove temporary clone directory
-      file:
-        path: "{{ tmp_dir }}"
-        state: absent

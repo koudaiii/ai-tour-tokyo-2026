@@ -9,7 +9,7 @@ usage() {
 Usage: script/server [gunicorn options...]
 
 Start the web application with gunicorn.
-This script uses `exec uv run ...` so signals are handled by gunicorn directly.
+This script uses `exec ... run gunicorn` so signals are handled by gunicorn directly.
 EOF
 }
 
@@ -30,11 +30,19 @@ log() {
   echo "[server] $*"
 }
 
-require_cmd uv
+UV_BIN=""
+if command -v uv >/dev/null 2>&1; then
+  UV_BIN="uv"
+elif [[ -x .venv/bin/uv ]]; then
+  UV_BIN=".venv/bin/uv"
+else
+  echo "Error: 'uv' is required but not installed (or .venv/bin/uv missing)." >&2
+  exit 1
+fi
 
 if [[ ! -x .venv/bin/gunicorn ]]; then
-  log ".venv/bin/gunicorn not found. Running uv sync"
-  uv sync
+  log ".venv/bin/gunicorn not found. Running ${UV_BIN} sync"
+  "${UV_BIN}" sync
 fi
 
 if [[ ! -x .venv/bin/gunicorn ]]; then
@@ -65,7 +73,7 @@ export ISUCONP_MEMCACHED_ADDRESS="${ISUCONP_MEMCACHED_ADDRESS:-127.0.0.1:11211}"
 log "Starting gunicorn ${GUNICORN_APP} on ${GUNICORN_BIND}"
 log "Using DB ${ISUCONP_DB_USER}@${ISUCONP_DB_HOST}:${ISUCONP_DB_PORT}/${ISUCONP_DB_NAME}"
 log "Using Memcached ${ISUCONP_MEMCACHED_ADDRESS}"
-exec uv run gunicorn \
+exec "${UV_BIN}" run gunicorn \
   "${GUNICORN_APP}" \
   -b "${GUNICORN_BIND}" \
   --log-file - \
