@@ -1,15 +1,19 @@
-.PHONY: init clean
-init: sql/1_data.sql benchmarker/userdata/img
+.PHONY: init restore clean
+init: sql/isuconp_data.dump benchmarker/userdata/img
 
-sql/dump.sql.bz2:
-	cd sql && \
-	curl -L -O https://github.com/catatsuy/private-isu/releases/download/img/dump.sql.bz2
+restore:
+	DUMP_PATH=sql/isuconp_data.dump script/restore
 
-sql/1_data.sql: sql/dump.sql.bz2
+PG_DUMP_BZ2_URL ?= https://github.com/koudaiii/ai-tour-for-partner-2026-track4-session1/releases/download/db-dump-latest/isuconp_pg17_latest.dump.bz2
+
+sql/isuconp_data.dump.bz2:
 	cd sql && \
-	bunzip2 -k -f dump.sql.bz2 && \
-	python3 convert_dump.py dump.sql 1_data.sql && \
-	rm -f dump.sql
+	curl -L -o isuconp_data.dump.bz2 "$(PG_DUMP_BZ2_URL)"
+
+sql/isuconp_data.dump: sql/isuconp_data.dump.bz2
+	cd sql && \
+	bunzip2 -k -f isuconp_data.dump.bz2 && \
+	test -f isuconp_data.dump
 
 benchmarker/userdata/img.zip:
 	cd benchmarker/userdata && \
@@ -20,6 +24,6 @@ benchmarker/userdata/img: benchmarker/userdata/img.zip
 	unzip -qq -o img.zip
 
 clean:
-	rm -f sql/dump.sql.bz2 sql/dump.sql sql/1_data.sql
+	rm -f sql/isuconp_data.dump.bz2 sql/isuconp_data.dump
 	rm -f benchmarker/userdata/img.zip
 	rm -rf benchmarker/userdata/img
