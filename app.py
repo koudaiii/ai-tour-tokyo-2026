@@ -227,9 +227,11 @@ Session(app)
 
 @app.template_global()
 def image_url(post):
-    blob_url = get_blob_url(post["id"], post["mime"])
-    if blob_url:
-        return blob_url
+    blob_key = post.get("img_blob_key")
+    if blob_key:
+        blob_url = get_blob_url(blob_key)
+        if blob_url:
+            return blob_url
 
     ext = _mime_to_ext(post["mime"])
     return "/image/%s%s" % (post["id"], ext)
