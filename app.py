@@ -490,6 +490,12 @@ def get_image(id, ext):
     cursor.execute("SELECT * FROM posts WHERE id = %s", (id,))
     post = cursor.fetchone()
 
+    blob_key = post.get("img_blob_key")
+    if blob_key:
+        blob_url = get_blob_url(blob_key)
+        if blob_url:
+            return flask.redirect(blob_url)
+
     mime = post["mime"]
     if (
         ext == "jpg"
