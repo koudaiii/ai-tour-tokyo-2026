@@ -57,12 +57,11 @@ def _mime_to_ext(mime):
     return ""
 
 
-def get_blob_url(post_id, mime):
+def get_blob_url(blob_key):
     client = blob_service_client()
     if client is None:
         return None
-    ext = _mime_to_ext(mime)
-    return f"{client.url}{AZURE_STORAGE_CONTAINER_NAME}/{post_id}{ext}"
+    return f"{client.url}{AZURE_STORAGE_CONTAINER_NAME}/{blob_key}"
 
 
 _config = None
@@ -228,15 +227,11 @@ Session(app)
 
 @app.template_global()
 def image_url(post):
-    ext = ""
-    mime = post["mime"]
-    if mime == "image/jpeg":
-        ext = ".jpg"
-    elif mime == "image/png":
-        ext = ".png"
-    elif mime == "image/gif":
-        ext = ".gif"
+    blob_url = get_blob_url(post["id"], post["mime"])
+    if blob_url:
+        return blob_url
 
+    ext = _mime_to_ext(post["mime"])
     return "/image/%s%s" % (post["id"], ext)
 
 
