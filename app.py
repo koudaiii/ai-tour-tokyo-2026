@@ -9,6 +9,7 @@ import tempfile
 import flask
 import psycopg2
 import psycopg2.extras
+from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from flask_session import Session
 from jinja2 import pass_eval_context
