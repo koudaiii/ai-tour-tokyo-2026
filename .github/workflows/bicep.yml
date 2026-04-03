@@ -1,0 +1,36 @@
+name: Bicep Lint and Build
+
+on:
+  push:
+    paths:
+      - "infra/**"
+  pull_request:
+    paths:
+      - "infra/**"
+
+jobs:
+  bicep:
+    name: Lint and Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bicep CLI
+        run: az bicep install
+
+      - name: Bicep Format Check
+        run: |
+          az bicep format --file infra/main.bicep --output-file /dev/null
+          diff <(az bicep format --file infra/main.bicep --stdout) infra/main.bicep || {
+            echo "::error::Bicep file is not formatted. Run 'az bicep format --file infra/main.bicep'"
+            exit 1
+          }
+
+      - name: Bicep Restore
+        run: az bicep restore --file infra/main.bicep
+
+      - name: Bicep Lint
+        run: az bicep lint --file infra/main.bicep
+
+      - name: Bicep Build
+        run: az bicep build --file infra/main.bicep
