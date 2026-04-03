@@ -3,10 +3,15 @@
 ## How to Use
 
 ```sh
-make init
-make restore
 script/bootstrap
 script/server
+```
+
+If you need sample data
+
+```sh
+make init
+make restore
 ```
 
 ## On Azure VM

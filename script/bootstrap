@@ -246,7 +246,9 @@ check_db_state() {
 
   if ! probe_db_connection; then
     local missing_role
+    local missing_database
     missing_role="$(printf '%s' "${LAST_DB_ERROR}" | sed -n 's/.*role "\([^"]*\)" does not exist.*/\1/p' | head -n1)"
+    missing_database="$(printf '%s' "${LAST_DB_ERROR}" | sed -n 's/.*database "\([^"]*\)" does not exist.*/\1/p' | head -n1)"
 
     if [[ "${LAST_DB_ERROR}" == *"invalid URI"* || "${LAST_DB_ERROR}" == *"could not translate host name"* ]]; then
       error_exit "Invalid ISUCONP_DATABASE_URL or unreachable host. Details: ${LAST_DB_ERROR}"
@@ -260,6 +262,17 @@ check_db_state() {
         fi
       else
         error_exit "PostgreSQL role '${missing_role}' does not exist. Create it first, for example: psql -d postgres -c \"CREATE ROLE ${missing_role} LOGIN PASSWORD '...';\""
+      fi
+    fi
+    if [[ -n "${missing_database}" ]]; then
+      if [[ -z "${ISUCONP_DATABASE_URL}" && ( "${DB_CHECK_HOST}" == "localhost" || "${DB_CHECK_HOST}" == "127.0.0.1" || -z "${DB_CHECK_HOST}" ) ]]; then
+        if try_fix_local_role_and_db && probe_db_connection; then
+          log "Created missing role/database and reconnected successfully"
+        else
+          error_exit "PostgreSQL database '${missing_database}' does not exist and automatic local fix failed. Run manually: createdb -U ${ISUCONP_DB_USER} ${missing_database}"
+        fi
+      else
+        error_exit "PostgreSQL database '${missing_database}' does not exist. Create it first, for example: createdb -U ${ISUCONP_DB_USER} ${missing_database}"
       fi
     fi
     if ! probe_db_connection; then
