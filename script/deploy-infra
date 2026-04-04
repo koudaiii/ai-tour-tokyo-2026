@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NOW_YYYYMMDDHHMM="$(date +%Y%m%d%H%M)"
 TEMPLATE_FILE="${ROOT_DIR}/infra/main.bicep"
 TAGS_JSON='{"CostControl":"ignore","SecurityControl":"ignore","GitHub Repository":"koudaiii/ai-tour-for-partner-2026-track4-session1"}'
+ENV_FILE="${ROOT_DIR}/.env"
 
 usage() {
   cat <<'EOF'
@@ -51,6 +52,23 @@ print_application_env() {
   log "Application environment variables (KEY=VALUE):"
   echo "AZURE_STORAGE_ACCOUNT_URL=${account_url}"
   echo "AZURE_STORAGE_CONTAINER_NAME=${CONTAINER_NAME}"
+}
+
+write_application_env_file() {
+  local account_url tmp_file
+  account_url="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/"
+  tmp_file="$(mktemp)"
+
+  touch "${ENV_FILE}"
+  grep -vE '^(AZURE_STORAGE_ACCOUNT_URL|AZURE_STORAGE_CONTAINER_NAME)=' "${ENV_FILE}" > "${tmp_file}" || true
+  {
+    cat "${tmp_file}"
+    echo "AZURE_STORAGE_ACCOUNT_URL=${account_url}"
+    echo "AZURE_STORAGE_CONTAINER_NAME=${CONTAINER_NAME}"
+  } > "${ENV_FILE}"
+  rm -f "${tmp_file}"
+
+  log "Updated ${ENV_FILE} with Azure storage environment variables"
 }
 
 run_az() {
@@ -196,6 +214,7 @@ main() {
   run_az "${deploy_cmd[@]}"
   log "Deployment completed"
   print_application_env
+  write_application_env_file
 }
 
 main "$@"

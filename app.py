@@ -12,6 +12,7 @@ import psycopg2
 import psycopg2.extras
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient, ContentSettings
+from dotenv import load_dotenv
 from flask_session import Session
 from jinja2 import pass_eval_context
 from markupsafe import Markup, escape
@@ -19,6 +20,8 @@ from pymemcache.client.base import Client as MemcacheClient
 
 UPLOAD_LIMIT = 10 * 1024 * 1024  # 10mb
 POSTS_PER_PAGE = 20
+
+load_dotenv()
 
 AZURE_STORAGE_CONTAINER_NAME = os.environ.get("AZURE_STORAGE_CONTAINER_NAME", "images")
 

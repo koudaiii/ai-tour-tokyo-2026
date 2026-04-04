@@ -61,3 +61,8 @@ For application details and full setup guidance, see:
 - [manual.md](manual.md)
 - [CLAUDE.md](CLAUDE.md)
 - [AGENTS.md](AGENTS.md)
+
+## Environment Variables
+
+- `.env.sample`: Template of supported environment variables
+- `.env`: Local environment file used for development
