@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="${ROOT_DIR}/.env"
+
+usage() {
+  cat <<'EOF'
+Usage: script/grant-storage-role [options]
+
+Grant Azure Blob data role to the current signed-in user for a Storage Account.
+
+Options:
+  --storage-account NAME   Storage account name (default: inferred from .env AZURE_STORAGE_ACCOUNT_URL)
+  --role NAME              RBAC role name (default: Storage Blob Data Contributor)
+  --assignee OBJECT_ID     Assignee object id (default: current signed-in user)
+  --dry-run                Print planned Azure commands without applying changes
+  -h, --help               Show this help
+EOF
+}
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Error: '${cmd}' is required but not installed." >&2
+    exit 1
+  fi
+}
+
+log() {
+  echo "[grant-storage-role] $*"
+}
+
+run_az() {
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    local first=1
+    local arg
+    for arg in az "$@"; do
+      if [[ "${first}" -eq 1 ]]; then
+        printf '%q' "${arg}"
+        first=0
+      else
+        printf ' %q' "${arg}"
+      fi
+    done
+    printf '\n'
+    return 0
+  fi
+  az "$@"
+}
+
+ensure_azure_login() {
+  if ! az account show --output none >/dev/null 2>&1; then
+    echo "Error: Azure login required. Run 'az login' first." >&2
+    exit 1
+  fi
+  local account
+  account="$(az account show --query '{user:user.name,subscription:name}' -o tsv 2>/dev/null | tr '\t' ' ')"
+  log "Azure login confirmed: ${account}"
+}
+
+infer_storage_account_from_env() {
+  if [[ ! -f "${ENV_FILE}" ]]; then
+    return 1
+  fi
+  local account_url
+  account_url="$(sed -n 's/^AZURE_STORAGE_ACCOUNT_URL=//p' "${ENV_FILE}" | head -n1)"
+  if [[ -z "${account_url}" ]]; then
+    return 1
+  fi
+  account_url="${account_url#https://}"
+  account_url="${account_url#http://}"
+  account_url="${account_url%%/*}"
+  STORAGE_ACCOUNT_NAME="${account_url%%.blob.core.windows.net}"
+  [[ -n "${STORAGE_ACCOUNT_NAME}" ]]
+}
+
+resolve_assignee_object_id() {
+  if [[ -n "${ASSIGNEE_OBJECT_ID}" ]]; then
+    return 0
+  fi
+
+  # For user-based az login.
+  ASSIGNEE_OBJECT_ID="$(az ad signed-in-user show --query id -o tsv 2>/dev/null || true)"
+  if [[ -n "${ASSIGNEE_OBJECT_ID}" ]]; then
+    ASSIGNEE_PRINCIPAL_TYPE="User"
+    return 0
+  fi
+
+  # Fallback for service principal based login.
+  ASSIGNEE_OBJECT_ID="$(az ad sp show --id "$(az account show --query user.name -o tsv)" --query id -o tsv 2>/dev/null || true)"
+  if [[ -z "${ASSIGNEE_OBJECT_ID}" ]]; then
+    echo "Error: Failed to resolve assignee object id. Pass --assignee OBJECT_ID explicitly." >&2
+    exit 1
+  fi
+  ASSIGNEE_PRINCIPAL_TYPE="ServicePrincipal"
+}
+
+STORAGE_ACCOUNT_NAME=""
+ROLE_NAME="Storage Blob Data Contributor"
+ASSIGNEE_OBJECT_ID=""
+ASSIGNEE_PRINCIPAL_TYPE="User"
+DRY_RUN=0
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --storage-account)
+        STORAGE_ACCOUNT_NAME="${2:-}"
+        shift 2
+        ;;
+      --role)
+        ROLE_NAME="${2:-}"
+        shift 2
+        ;;
+      --assignee)
+        ASSIGNEE_OBJECT_ID="${2:-}"
+        shift 2
+        ;;
+      --dry-run)
+        DRY_RUN=1
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        echo "Error: unknown option '$1'" >&2
+        usage
+        exit 1
+        ;;
+    esac
+  done
+}
+
+validate_inputs() {
+  if [[ -z "${STORAGE_ACCOUNT_NAME}" ]]; then
+    infer_storage_account_from_env || true
+  fi
+  if [[ -z "${STORAGE_ACCOUNT_NAME}" ]]; then
+    echo "Error: --storage-account is required (or set AZURE_STORAGE_ACCOUNT_URL in .env)." >&2
+    exit 1
+  fi
+  if [[ ! "${STORAGE_ACCOUNT_NAME}" =~ ^[a-z0-9]{3,24}$ ]]; then
+    echo "Error: invalid storage account name: ${STORAGE_ACCOUNT_NAME}" >&2
+    exit 1
+  fi
+}
+
+main() {
+  parse_args "$@"
+  require_cmd az
+  require_cmd sed
+  ensure_azure_login
+  validate_inputs
+  resolve_assignee_object_id
+
+  local scope
+  scope="$(az storage account show --name "${STORAGE_ACCOUNT_NAME}" --query id -o tsv)"
+  if [[ -z "${scope}" ]]; then
+    echo "Error: storage account not found: ${STORAGE_ACCOUNT_NAME}" >&2
+    exit 1
+  fi
+
+  log "Resolved parameters:"
+  log "STORAGE_ACCOUNT_NAME=${STORAGE_ACCOUNT_NAME}"
+  log "ROLE_NAME=${ROLE_NAME}"
+  log "ASSIGNEE_OBJECT_ID=${ASSIGNEE_OBJECT_ID}"
+  log "ASSIGNEE_PRINCIPAL_TYPE=${ASSIGNEE_PRINCIPAL_TYPE}"
+  log "SCOPE=${scope}"
+
+  local exists
+  exists="$(az role assignment list --assignee-object-id "${ASSIGNEE_OBJECT_ID}" --scope "${scope}" --role "${ROLE_NAME}" --query 'length(@)' -o tsv 2>/dev/null || echo 0)"
+  if [[ "${exists}" != "0" ]]; then
+    log "Role assignment already exists. No changes needed."
+    return 0
+  fi
+
+  log "Creating role assignment"
+  run_az role assignment create \
+    --assignee-object-id "${ASSIGNEE_OBJECT_ID}" \
+    --assignee-principal-type "${ASSIGNEE_PRINCIPAL_TYPE}" \
+    --role "${ROLE_NAME}" \
+    --scope "${scope}" \
+    --output none
+
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    log "Dry-run completed. No role assignment was created."
+  else
+    log "Role assignment created successfully."
+  fi
+}
+
+main "$@"

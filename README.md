@@ -42,6 +42,7 @@ script/destroy-vm
 - `script/backup`: Create PostgreSQL dump
 - `script/upload-to-github`: Upload dump file to GitHub Releases
 - `script/deploy-infra`: Deploy Azure infra from `infra/main.bicep`
+- `script/grant-storage-role`: Grant Blob data role to current Azure login for a storage account
 - `script/launch-vm`: Create Azure VM
 - `script/list-resource-groups`: List Resource Groups tagged for this repository
 - `script/destroy-vm`: Delete Resource Group(s)
