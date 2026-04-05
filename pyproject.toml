@@ -20,3 +20,8 @@ dependencies = [
     "azure-identity>=1.25.3",
     "python-dotenv>=1.1.1",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]
