@@ -221,8 +221,9 @@ def make_posts(results, all_comments=False):
 
 
 # app setup
-static_path = pathlib.Path(__file__).resolve().parent.parent / "public"
-app = flask.Flask(__name__, static_folder=str(static_path), static_url_path="")
+root_dir = pathlib.Path(__file__).resolve().parent
+public_dir = root_dir / "public"
+app = flask.Flask(__name__, static_folder=str(public_dir), static_url_path="")
 # app.debug = True
 
 # Flask-Session
@@ -266,6 +267,12 @@ def nl2br(eval_ctx, value):
 def get_initialize():
     db_initialize()
     return ""
+
+
+@app.route("/public/<path:filename>")
+def get_public_file(filename):
+    # nginx がないローカル実行時向けフォールバック。
+    return flask.send_from_directory(str(public_dir), filename)
 
 
 @app.route("/login")
