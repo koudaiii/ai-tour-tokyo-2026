@@ -464,15 +464,20 @@ def post_index():
     cursor = db().cursor()
 
     if container:
-        blob_key = f"{uuid.uuid4()}{_mime_to_ext(mime)}"
-        container.upload_blob(
-            blob_key,
-            imgdata,
-            content_settings=ContentSettings(content_type=mime),
-            overwrite=True,
-        )
-        query = "INSERT INTO posts (user_id, mime, imgdata, body, img_blob_key) VALUES (%s,%s,%s,%s,%s) RETURNING id"
-        cursor.execute(query, (me["id"], mime, b"", flask.request.form.get("body"), blob_key))
+        try:
+            blob_key = f"{uuid.uuid4()}{_mime_to_ext(mime)}"
+            container.upload_blob(
+                blob_key,
+                imgdata,
+                content_settings=ContentSettings(content_type=mime),
+                overwrite=True,
+            )
+            query = "INSERT INTO posts (user_id, mime, imgdata, body, img_blob_key) VALUES (%s,%s,%s,%s,%s) RETURNING id"
+            cursor.execute(query, (me["id"], mime, b"", flask.request.form.get("body"), blob_key))
+        except Exception:
+            app.logger.exception("Blob upload failed. Falling back to DB imgdata storage.")
+            query = "INSERT INTO posts (user_id, mime, imgdata, body) VALUES (%s,%s,%s,%s) RETURNING id"
+            cursor.execute(query, (me["id"], mime, imgdata, flask.request.form.get("body")))
     else:
         query = "INSERT INTO posts (user_id, mime, imgdata, body) VALUES (%s,%s,%s,%s) RETURNING id"
         cursor.execute(query, (me["id"], mime, imgdata, flask.request.form.get("body")))

@@ -40,6 +40,11 @@ class FakeContainer:
         self.upload_calls.append((args, kwargs))
 
 
+class FailingContainer:
+    def upload_blob(self, *args, **kwargs):
+        raise RuntimeError("upload failed")
+
+
 @pytest.fixture
 def client(monkeypatch):
     app = app_module.app
@@ -111,6 +116,33 @@ def test_post_index_uses_imgdata_when_container_is_not_available(client, monkeyp
 
     assert resp.status_code == 302
     assert resp.headers["Location"].endswith("/posts/456")
+
+    query, params = fake_cursor.execute_calls[0]
+    assert "img_blob_key" not in query
+    assert params[2] == raw
+
+
+def test_post_index_falls_back_to_imgdata_when_blob_upload_fails(client, monkeypatch):
+    fake_cursor = FakeCursor(fetchone_rows=[{"id": 789}])
+    fake_db = FakeDB(fake_cursor)
+
+    monkeypatch.setattr(app_module, "get_session_user", lambda: {"id": 1})
+    monkeypatch.setattr(app_module, "blob_container_client", lambda: FailingContainer())
+    monkeypatch.setattr(app_module, "db", lambda: fake_db)
+
+    with client.session_transaction() as sess:
+        sess["csrf_token"] = "token"
+
+    raw = b"fallback-img"
+    data = {
+        "csrf_token": "token",
+        "body": "fallback",
+        "file": (io.BytesIO(raw), "a.png", "image/png"),
+    }
+    resp = client.post("/", data=data, content_type="multipart/form-data")
+
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/posts/789")
 
     query, params = fake_cursor.execute_calls[0]
     assert "img_blob_key" not in query
