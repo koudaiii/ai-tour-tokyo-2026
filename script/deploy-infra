@@ -6,6 +6,8 @@ NOW_YYYYMMDDHHMM="$(date +%Y%m%d%H%M)"
 TEMPLATE_FILE="${ROOT_DIR}/infra/main.bicep"
 TAGS_JSON='{"CostControl":"ignore","SecurityControl":"ignore","GitHub Repository":"koudaiii/ai-tour-for-partner-2026-track4-session1"}'
 ENV_FILE="${ROOT_DIR}/.env"
+WORKLOAD_CODE="pisu"
+DEPLOYMENT_ENVIRONMENT="sandbox"
 
 usage() {
   cat <<'EOF'
@@ -59,6 +61,9 @@ log() {
 log_resolved_parameters() {
   log "Resolved parameters:"
   log "LOCATION=${LOCATION}"
+  log "REGION_CODE=${REGION_CODE}"
+  log "WORKLOAD_CODE=${WORKLOAD_CODE}"
+  log "DEPLOYMENT_ENVIRONMENT=${DEPLOYMENT_ENVIRONMENT}"
   log "DEPLOYMENT_NAME=${DEPLOYMENT_NAME}"
   log "DATE_SUFFIX=${DATE_SUFFIX}"
   log "STORAGE_ACCOUNT_NAME=${STORAGE_ACCOUNT_NAME}"
@@ -75,6 +80,7 @@ log_resolved_parameters() {
   log "POSTGRES_STORAGE_GB=${POSTGRES_STORAGE_GB}"
   log "CONTAINER_APPS_ENVIRONMENT_NAME=${CONTAINER_APPS_ENVIRONMENT_NAME}"
   log "CONTAINER_APP_NAME=${CONTAINER_APP_NAME}"
+  log "VIRTUAL_NETWORK_NAME=${VIRTUAL_NETWORK_NAME}"
   log "APP_CONTAINER_IMAGE=${APP_CONTAINER_IMAGE}"
   log "MEMCACHED_CONTAINER_IMAGE=${MEMCACHED_CONTAINER_IMAGE}"
   log "POSTGRES_ADMIN_PASSWORD=***"
@@ -150,28 +156,45 @@ ensure_azure_login() {
 
 generate_storage_account_name() {
   local suffix rand
-  suffix="${DATE_SUFFIX}"
+  suffix="${DATE_YYMMDD}"
   rand="$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom | head -c 2)"
-  echo "privateisu${suffix}${rand}" | cut -c1-24
+  echo "st${WORKLOAD_CODE}sbx${REGION_CODE}${suffix}${rand}" | cut -c1-24
 }
 
 generate_postgres_server_name() {
   local suffix rand
   suffix="${DATE_SUFFIX}"
   rand="$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom | head -c 4)"
-  echo "privateisu-pg-${suffix}-${rand}" | cut -c1-63
+  echo "pgfs-${WORKLOAD_CODE}-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${suffix}-${rand}" | cut -c1-63
 }
 
 generate_container_apps_environment_name() {
-  local suffix
-  suffix="${DATE_SUFFIX}"
-  echo "privateisu-acaenv-${suffix}" | cut -c1-32
+  echo "acae-${WORKLOAD_CODE}-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}" | cut -c1-32
 }
 
 generate_container_app_name() {
-  local suffix
-  suffix="${DATE_SUFFIX}"
-  echo "privateisu-app-${suffix}" | cut -c1-32
+  echo "aca-${WORKLOAD_CODE}-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}" | cut -c1-32
+}
+
+generate_virtual_network_name() {
+  echo "vnet-${WORKLOAD_CODE}-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}" | cut -c1-64
+}
+
+resolve_region_code() {
+  case "${LOCATION}" in
+    japaneast) REGION_CODE="jpe" ;;
+    japanwest) REGION_CODE="jpw" ;;
+    eastus) REGION_CODE="eus" ;;
+    eastus2) REGION_CODE="eus2" ;;
+    westus) REGION_CODE="wus" ;;
+    westus2) REGION_CODE="wus2" ;;
+    westus3) REGION_CODE="wus3" ;;
+    centralus) REGION_CODE="cus" ;;
+    northeurope) REGION_CODE="neu" ;;
+    westeurope) REGION_CODE="weu" ;;
+    southeastasia) REGION_CODE="sea" ;;
+    *) REGION_CODE="$(echo "${LOCATION}" | tr -cd '[:alnum:]' | tr '[:upper:]' '[:lower:]' | cut -c1-6)" ;;
+  esac
 }
 
 generate_postgres_password() {
@@ -221,6 +244,9 @@ resolve_postgres_entra_admin_defaults() {
 
 LOCATION="japaneast"
 DATE_SUFFIX="${NOW_YYYYMMDDHHMM}"
+DATE_YYMMDD="${DATE_SUFFIX:2:8}"
+DATE_YYMMDDHHMM="${DATE_SUFFIX:2:10}"
+REGION_CODE="jpe"
 DEPLOYMENT_NAME="private-isu-infra-${NOW_YYYYMMDDHHMM}"
 STORAGE_ACCOUNT_NAME=""
 CONTAINER_NAME="images"
@@ -237,6 +263,7 @@ POSTGRES_SKU_NAME="Standard_B1ms"
 POSTGRES_STORAGE_GB="32"
 CONTAINER_APPS_ENVIRONMENT_NAME=""
 CONTAINER_APP_NAME=""
+VIRTUAL_NETWORK_NAME=""
 APP_CONTAINER_IMAGE="docker.io/koudaiii/ai-tour-for-partner-2026-track4-session1:latest"
 MEMCACHED_CONTAINER_IMAGE="docker.io/library/memcached:1.6"
 DRY_RUN=0
@@ -361,6 +388,10 @@ validate_inputs() {
     exit 1
   fi
 
+  resolve_region_code
+  DATE_YYMMDD="${DATE_SUFFIX:2:8}"
+  DATE_YYMMDDHHMM="${DATE_SUFFIX:2:10}"
+
   if [[ -z "${STORAGE_ACCOUNT_NAME}" ]]; then
     STORAGE_ACCOUNT_NAME="$(generate_storage_account_name)"
   fi
@@ -389,6 +420,9 @@ validate_inputs() {
   fi
   if [[ -z "${CONTAINER_APP_NAME}" ]]; then
     CONTAINER_APP_NAME="$(generate_container_app_name)"
+  fi
+  if [[ -z "${VIRTUAL_NETWORK_NAME}" ]]; then
+    VIRTUAL_NETWORK_NAME="$(generate_virtual_network_name)"
   fi
   if [[ ! "${POSTGRES_VERSION}" =~ ^18$ ]]; then
     echo "Error: --postgres-version must be 18." >&2
@@ -421,6 +455,9 @@ main() {
     --template-file "${TEMPLATE_FILE}"
     --parameters
     "nowYyyymmddHhmm=${DATE_SUFFIX}"
+    "workloadCode=${WORKLOAD_CODE}"
+    "deploymentEnvironment=${DEPLOYMENT_ENVIRONMENT}"
+    "regionCode=${REGION_CODE}"
     "storageAccountName=${STORAGE_ACCOUNT_NAME}"
     "containerName=${CONTAINER_NAME}"
     "postgresServerName=${POSTGRES_SERVER_NAME}"
@@ -436,6 +473,7 @@ main() {
     "postgresStorageSizeGB=${POSTGRES_STORAGE_GB}"
     "containerAppsEnvironmentName=${CONTAINER_APPS_ENVIRONMENT_NAME}"
     "containerAppName=${CONTAINER_APP_NAME}"
+    "virtualNetworkName=${VIRTUAL_NETWORK_NAME}"
     "appContainerImage=${APP_CONTAINER_IMAGE}"
     "memcachedContainerImage=${MEMCACHED_CONTAINER_IMAGE}"
     "tags=${TAGS_JSON}"
@@ -451,6 +489,9 @@ main() {
       --template-file "${TEMPLATE_FILE}"
       --parameters
       "nowYyyymmddHhmm=${DATE_SUFFIX}"
+      "workloadCode=${WORKLOAD_CODE}"
+      "deploymentEnvironment=${DEPLOYMENT_ENVIRONMENT}"
+      "regionCode=${REGION_CODE}"
       "storageAccountName=${STORAGE_ACCOUNT_NAME}"
       "containerName=${CONTAINER_NAME}"
       "postgresServerName=${POSTGRES_SERVER_NAME}"
@@ -466,6 +507,7 @@ main() {
       "postgresStorageSizeGB=${POSTGRES_STORAGE_GB}"
       "containerAppsEnvironmentName=${CONTAINER_APPS_ENVIRONMENT_NAME}"
       "containerAppName=${CONTAINER_APP_NAME}"
+      "virtualNetworkName=${VIRTUAL_NETWORK_NAME}"
       "appContainerImage=${APP_CONTAINER_IMAGE}"
       "memcachedContainerImage=${MEMCACHED_CONTAINER_IMAGE}"
       "tags=${TAGS_JSON}"

@@ -14,10 +14,23 @@ param location string = 'japaneast'
 @description('Date suffix for resource group name (YYYYMMDDHHmm format)')
 param nowYyyymmddHhmm string
 
+@description('Workload code used in resource names')
+@minLength(2)
+@maxLength(4)
+param workloadCode string = 'pisu'
+
+@description('Deployment environment used in resource names')
+param deploymentEnvironment string = 'sandbox'
+
+@description('Region code used in resource names')
+@minLength(2)
+@maxLength(4)
+param regionCode string = 'jpe'
+
 @description('Name of the Storage Account (must be globally unique, 3-24 lowercase alphanumeric)')
 @minLength(3)
 @maxLength(24)
-param storageAccountName string
+param storageAccountName string = 'st${workloadCode}sbx${regionCode}${substring(nowYyyymmddHhmm, 2, 6)}${substring(uniqueString(subscription().subscriptionId, nowYyyymmddHhmm), 0, 2)}'
 
 @description('Name of the blob container for storing images')
 param containerName string = 'images'
@@ -25,7 +38,7 @@ param containerName string = 'images'
 @description('Name of the PostgreSQL Flexible Server (3-63 lowercase alphanumeric or hyphen)')
 @minLength(3)
 @maxLength(63)
-param postgresServerName string
+param postgresServerName string = 'pgfs-${workloadCode}-${deploymentEnvironment}-${regionCode}-${nowYyyymmddHhmm}'
 
 @description('PostgreSQL administrator login')
 param postgresAdminUser string = 'isuconp'
@@ -72,10 +85,22 @@ param postgresSkuName string = 'Standard_B1ms'
 param postgresStorageSizeGB int = 32
 
 @description('Container Apps managed environment name')
-param containerAppsEnvironmentName string = 'privateisu-acaenv-${nowYyyymmddHhmm}'
+param containerAppsEnvironmentName string = 'acae-${workloadCode}-${deploymentEnvironment}-${regionCode}-${substring(nowYyyymmddHhmm, 2, 10)}'
 
 @description('Container App name')
-param containerAppName string = 'privateisu-app-${nowYyyymmddHhmm}'
+param containerAppName string = 'aca-${workloadCode}-${deploymentEnvironment}-${regionCode}-${substring(nowYyyymmddHhmm, 2, 10)}'
+
+@description('Virtual network name for private connectivity')
+param virtualNetworkName string = 'vnet-${workloadCode}-${deploymentEnvironment}-${regionCode}-${substring(nowYyyymmddHhmm, 2, 10)}'
+
+@description('Address prefix for the virtual network')
+param virtualNetworkAddressPrefix string = '10.10.0.0/16'
+
+@description('Address prefix for the Container Apps infrastructure subnet')
+param containerAppsInfrastructureSubnetPrefix string = '10.10.0.0/23'
+
+@description('Address prefix for the PostgreSQL private endpoint subnet')
+param postgresPrivateEndpointSubnetPrefix string = '10.10.2.0/24'
 
 @description('Application container image (Docker Hub or ACR)')
 param appContainerImage string = 'docker.io/koudaiii/ai-tour-for-partner-2026-track4-session1:latest'
@@ -89,7 +114,7 @@ param tags object = {}
 ////////////
 // Variables
 ////////////
-var resourceGroupName = 'rg-private-isu-${nowYyyymmddHhmm}'
+var resourceGroupName = 'rg-${workloadCode}-${deploymentEnvironment}-${regionCode}-${substring(nowYyyymmddHhmm, 2, 10)}'
 
 ////////////
 // Resources / Modules
@@ -98,6 +123,19 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   name: resourceGroupName
   location: location
   tags: tags
+}
+
+module network 'network.bicep' = {
+  name: 'networkDeployment'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    virtualNetworkName: virtualNetworkName
+    virtualNetworkAddressPrefix: virtualNetworkAddressPrefix
+    containerAppsInfrastructureSubnetPrefix: containerAppsInfrastructureSubnetPrefix
+    postgresPrivateEndpointSubnetPrefix: postgresPrivateEndpointSubnetPrefix
+  }
 }
 
 module storageAccount 'br/public:avm/res/storage/storage-account:0.32.0' = {
@@ -142,6 +180,8 @@ module postgres 'postgresql.bicep' = {
     postgresTier: postgresTier
     postgresSkuName: postgresSkuName
     postgresStorageSizeGB: postgresStorageSizeGB
+    postgresPrivateEndpointSubnetResourceId: network.outputs.postgresPrivateEndpointSubnetResourceId
+    postgresPrivateDnsZoneResourceId: network.outputs.postgresPrivateDnsZoneResourceId
   }
 }
 
@@ -153,6 +193,7 @@ module containerApps 'containerapps.bicep' = {
     tags: tags
     containerAppsEnvironmentName: containerAppsEnvironmentName
     containerAppName: containerAppName
+    containerAppsInfrastructureSubnetResourceId: network.outputs.containerAppsInfrastructureSubnetResourceId
     appContainerImage: appContainerImage
     memcachedContainerImage: memcachedContainerImage
     azureStorageAccountUrl: storageAccount.outputs.primaryBlobEndpoint

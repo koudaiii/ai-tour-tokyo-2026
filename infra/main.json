@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "8565548545833081111"
+      "templateHash": "14959223086895736159"
     },
     "description": "Deploy Azure Storage Account + Azure Database for PostgreSQL Flexible Server + Azure Container Apps for private-isu"
   },
@@ -141,6 +141,34 @@
         "description": "Container App name"
       }
     },
+    "virtualNetworkName": {
+      "type": "string",
+      "defaultValue": "[format('privateisu-vnet-{0}', parameters('nowYyyymmddHhmm'))]",
+      "metadata": {
+        "description": "Virtual network name for private connectivity"
+      }
+    },
+    "virtualNetworkAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.10.0.0/16",
+      "metadata": {
+        "description": "Address prefix for the virtual network"
+      }
+    },
+    "containerAppsInfrastructureSubnetPrefix": {
+      "type": "string",
+      "defaultValue": "10.10.0.0/23",
+      "metadata": {
+        "description": "Address prefix for the Container Apps infrastructure subnet"
+      }
+    },
+    "postgresPrivateEndpointSubnetPrefix": {
+      "type": "string",
+      "defaultValue": "10.10.2.0/24",
+      "metadata": {
+        "description": "Address prefix for the PostgreSQL private endpoint subnet"
+      }
+    },
     "appContainerImage": {
       "type": "string",
       "defaultValue": "docker.io/koudaiii/ai-tour-for-partner-2026-track4-session1:latest",
@@ -173,6 +201,172 @@
       "name": "[variables('resourceGroupName')]",
       "location": "[parameters('location')]",
       "tags": "[parameters('tags')]"
+    },
+    "network": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "networkDeployment",
+      "resourceGroup": "[variables('resourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "virtualNetworkName": {
+            "value": "[parameters('virtualNetworkName')]"
+          },
+          "virtualNetworkAddressPrefix": {
+            "value": "[parameters('virtualNetworkAddressPrefix')]"
+          },
+          "containerAppsInfrastructureSubnetPrefix": {
+            "value": "[parameters('containerAppsInfrastructureSubnetPrefix')]"
+          },
+          "postgresPrivateEndpointSubnetPrefix": {
+            "value": "[parameters('postgresPrivateEndpointSubnetPrefix')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "12637881138169340799"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "The Azure region for network resource deployment"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags to apply to network resources"
+              }
+            },
+            "virtualNetworkName": {
+              "type": "string",
+              "metadata": {
+                "description": "Virtual network name for private connectivity"
+              }
+            },
+            "virtualNetworkAddressPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Address prefix for the virtual network"
+              }
+            },
+            "containerAppsInfrastructureSubnetPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Address prefix for the Container Apps infrastructure subnet"
+              }
+            },
+            "postgresPrivateEndpointSubnetPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Address prefix for the PostgreSQL private endpoint subnet"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2024-05-01",
+              "name": "[parameters('virtualNetworkName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('virtualNetworkAddressPrefix')]"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Network/virtualNetworks/subnets",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', parameters('virtualNetworkName'), 'aca-infra')]",
+              "properties": {
+                "addressPrefix": "[parameters('containerAppsInfrastructureSubnetPrefix')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/virtualNetworks/subnets",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', parameters('virtualNetworkName'), 'postgres-pe')]",
+              "properties": {
+                "addressPrefix": "[parameters('postgresPrivateEndpointSubnetPrefix')]",
+                "privateEndpointNetworkPolicies": "Disabled"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2024-06-01",
+              "name": "privatelink.postgres.database.azure.com",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2024-06-01",
+              "name": "[format('{0}/{1}', 'privatelink.postgres.database.azure.com', format('link-{0}', parameters('virtualNetworkName')))]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.postgres.database.azure.com')]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "virtualNetworkResourceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]"
+            },
+            "containerAppsInfrastructureSubnetResourceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), 'aca-infra')]"
+            },
+            "postgresPrivateEndpointSubnetResourceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), 'postgres-pe')]"
+            },
+            "postgresPrivateDnsZoneResourceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.postgres.database.azure.com')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "rg"
+      ]
     },
     "storageAccount": {
       "type": "Microsoft.Resources/deployments",
@@ -8386,6 +8580,12 @@
           },
           "postgresStorageSizeGB": {
             "value": "[parameters('postgresStorageSizeGB')]"
+          },
+          "postgresPrivateEndpointSubnetResourceId": {
+            "value": "[reference('network').outputs.postgresPrivateEndpointSubnetResourceId.value]"
+          },
+          "postgresPrivateDnsZoneResourceId": {
+            "value": "[reference('network').outputs.postgresPrivateDnsZoneResourceId.value]"
           }
         },
         "template": {
@@ -8395,7 +8595,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "4968363033862096191"
+              "templateHash": "13175140681626935606"
             }
           },
           "parameters": {
@@ -8501,6 +8701,18 @@
               "metadata": {
                 "description": "PostgreSQL storage size in GiB"
               }
+            },
+            "postgresPrivateEndpointSubnetResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Subnet resource ID used for PostgreSQL private endpoint"
+              }
+            },
+            "postgresPrivateDnsZoneResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Private DNS zone resource ID for PostgreSQL private endpoint"
+              }
             }
           },
           "resources": [
@@ -8583,6 +8795,20 @@
                         "name": "AllowAllWindowsAzureIps",
                         "startIpAddress": "0.0.0.0",
                         "endIpAddress": "0.0.0.0"
+                      }
+                    ]
+                  },
+                  "privateEndpoints": {
+                    "value": [
+                      {
+                        "subnetResourceId": "[parameters('postgresPrivateEndpointSubnetResourceId')]",
+                        "privateDnsZoneGroup": {
+                          "privateDnsZoneGroupConfigs": [
+                            {
+                              "privateDnsZoneResourceId": "[parameters('postgresPrivateDnsZoneResourceId')]"
+                            }
+                          ]
+                        }
                       }
                     ]
                   },
@@ -11205,6 +11431,7 @@
         }
       },
       "dependsOn": [
+        "network",
         "rg"
       ]
     },
@@ -11230,6 +11457,9 @@
           },
           "containerAppName": {
             "value": "[parameters('containerAppName')]"
+          },
+          "containerAppsInfrastructureSubnetResourceId": {
+            "value": "[reference('network').outputs.containerAppsInfrastructureSubnetResourceId.value]"
           },
           "appContainerImage": {
             "value": "[parameters('appContainerImage')]"
@@ -11257,7 +11487,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "17230453048280961055"
+              "templateHash": "6087952129155306963"
             }
           },
           "parameters": {
@@ -11284,6 +11514,12 @@
               "type": "string",
               "metadata": {
                 "description": "Container App name"
+              }
+            },
+            "containerAppsInfrastructureSubnetResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Subnet resource ID used by Container Apps managed environment infrastructure"
               }
             },
             "appContainerImage": {
@@ -11332,7 +11568,11 @@
               "name": "[parameters('containerAppsEnvironmentName')]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
-              "properties": {}
+              "properties": {
+                "vnetConfiguration": {
+                  "infrastructureSubnetId": "[parameters('containerAppsInfrastructureSubnetResourceId')]"
+                }
+              }
             },
             {
               "type": "Microsoft.App/containerApps",
@@ -11451,6 +11691,7 @@
         }
       },
       "dependsOn": [
+        "network",
         "postgres",
         "rg",
         "storageAccount"

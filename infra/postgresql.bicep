@@ -56,6 +56,12 @@ param postgresSkuName string = 'Standard_B1ms'
 @description('PostgreSQL storage size in GiB')
 param postgresStorageSizeGB int = 32
 
+@description('Subnet resource ID used for PostgreSQL private endpoint')
+param postgresPrivateEndpointSubnetResourceId string
+
+@description('Private DNS zone resource ID for PostgreSQL private endpoint')
+param postgresPrivateDnsZoneResourceId string
+
 module postgresServer 'br/public:avm/res/db-for-postgre-sql/flexible-server:0.15.2' = {
   name: 'postgresFlexibleServerDeployment'
   params: {
@@ -78,11 +84,16 @@ module postgresServer 'br/public:avm/res/db-for-postgre-sql/flexible-server:0.15
     geoRedundantBackup: 'Disabled'
     highAvailability: 'Disabled'
     publicNetworkAccess: 'Enabled'
-    firewallRules: [
+    privateEndpoints: [
       {
-        name: 'AllowAllWindowsAzureIps'
-        startIpAddress: '0.0.0.0'
-        endIpAddress: '0.0.0.0'
+        subnetResourceId: postgresPrivateEndpointSubnetResourceId
+        privateDnsZoneGroup: {
+          privateDnsZoneGroupConfigs: [
+            {
+              privateDnsZoneResourceId: postgresPrivateDnsZoneResourceId
+            }
+          ]
+        }
       }
     ]
     databases: [

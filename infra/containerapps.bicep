@@ -12,6 +12,9 @@ param containerAppsEnvironmentName string
 @description('Container App name')
 param containerAppName string
 
+@description('Subnet resource ID used by Container Apps managed environment infrastructure')
+param containerAppsInfrastructureSubnetResourceId string
+
 @description('Application container image')
 param appContainerImage string
 
@@ -35,7 +38,11 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: containerAppsEnvironmentName
   location: location
   tags: tags
-  properties: {}
+  properties: {
+    vnetConfiguration: {
+      infrastructureSubnetId: containerAppsInfrastructureSubnetResourceId
+    }
+  }
 }
 
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {

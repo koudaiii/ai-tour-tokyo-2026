@@ -1,9 +1,12 @@
 using 'main.bicep'
 
 param nowYyyymmddHhmm = readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000')
-param storageAccountName = 'privateisu${uniqueString('rg-private-isu-${readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000')}')}'
+param workloadCode = 'pisu'
+param deploymentEnvironment = 'sandbox'
+param regionCode = 'jpe'
+param storageAccountName = 'st${workloadCode}sbx${regionCode}${substring(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000'), 2, 6)}${substring(uniqueString(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000')), 0, 2)}'
 param containerName = 'images'
-param postgresServerName = 'privateisu-pg-${readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000')}'
+param postgresServerName = 'pgfs-${workloadCode}-${deploymentEnvironment}-${regionCode}-${readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000')}'
 param postgresAdminUser = 'isuconp'
 param postgresAdminPassword = readEnvironmentVariable('POSTGRES_ADMIN_PASSWORD', 'ReplaceMe_123!')
 param postgresDatabaseName = 'isuconp'
@@ -14,8 +17,8 @@ param postgresVersion = '18'
 param postgresTier = 'Burstable'
 param postgresSkuName = 'Standard_B1ms'
 param postgresStorageSizeGB = 32
-param containerAppsEnvironmentName = 'privateisu-acaenv-${readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000')}'
-param containerAppName = 'privateisu-app-${readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000')}'
+param containerAppsEnvironmentName = 'acae-${workloadCode}-${deploymentEnvironment}-${regionCode}-${substring(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000'), 2, 10)}'
+param containerAppName = 'aca-${workloadCode}-${deploymentEnvironment}-${regionCode}-${substring(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000'), 2, 10)}'
 param appContainerImage = readEnvironmentVariable('APP_CONTAINER_IMAGE', 'docker.io/koudaiii/ai-tour-for-partner-2026-track4-session1:latest')
 param memcachedContainerImage = 'docker.io/library/memcached:1.6'
 param tags = {
