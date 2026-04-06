@@ -76,29 +76,21 @@ logger = logging.getLogger(__name__)
 def config():
     global _config
     if _config is None:
+        database_url = os.environ.get(
+            "ISUCONP_DATABASE_URL",
+            "postgresql://isuconp:isuconp@127.0.0.1:5432/isuconp",
+        )
+        db_conf = {"dsn": database_url}
+
         _config = {
-            "db": {
-                "host": os.environ.get("ISUCONP_DB_HOST", "localhost"),
-                "port": int(os.environ.get("ISUCONP_DB_PORT", "5432")),
-                "user": os.environ.get("ISUCONP_DB_USER", "isuconp"),
-                "dbname": os.environ.get("ISUCONP_DB_NAME", "isuconp"),
-            },
+            "db": db_conf,
             "memcache": {
                 "address": os.environ.get(
                     "ISUCONP_MEMCACHED_ADDRESS", "127.0.0.1:11211"
                 ),
             },
         }
-        password = os.environ.get("ISUCONP_DB_PASSWORD")
-        if password:
-            _config["db"]["password"] = password
-        logger.info(
-            "Using DB %s@%s:%s/%s",
-            _config["db"]["user"],
-            _config["db"]["host"],
-            _config["db"]["port"],
-            _config["db"]["dbname"],
-        )
+        logger.info("Using DB via ISUCONP_DATABASE_URL")
         logger.info("Using Memcached %s", _config["memcache"]["address"])
     return _config
 
