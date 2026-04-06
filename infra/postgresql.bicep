@@ -19,6 +19,23 @@ param postgresAdminPassword string
 @description('Application database name')
 param postgresDatabaseName string
 
+@description('Microsoft Entra admin principal object ID for PostgreSQL server')
+param postgresEntraAdminObjectId string
+
+@description('Microsoft Entra admin principal name (UPN/display name/app name)')
+param postgresEntraAdminPrincipalName string
+
+@description('Microsoft Entra admin principal type')
+@allowed([
+  'User'
+  'Group'
+  'ServicePrincipal'
+])
+param postgresEntraAdminPrincipalType string = 'User'
+
+@description('Tenant ID for Microsoft Entra admin')
+param postgresEntraAdminTenantId string
+
 @description('PostgreSQL server version')
 @allowed([
   '18'
@@ -53,6 +70,7 @@ module postgresServer 'br/public:avm/res/db-for-postgre-sql/flexible-server:0.15
     authConfig: {
       activeDirectoryAuth: 'Enabled'
       passwordAuth: 'Enabled'
+      tenantId: postgresEntraAdminTenantId
     }
     version: postgresVersion
     storageSizeGB: postgresStorageSizeGB
@@ -77,8 +95,26 @@ module postgresServer 'br/public:avm/res/db-for-postgre-sql/flexible-server:0.15
   }
 }
 
+resource postgresServerResource 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' existing = {
+  name: postgresServerName
+}
+
+resource postgresEntraAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@2024-08-01' = if (!empty(postgresEntraAdminObjectId) && !empty(postgresEntraAdminPrincipalName)) {
+  parent: postgresServerResource
+  name: postgresEntraAdminObjectId
+  properties: {
+    principalName: postgresEntraAdminPrincipalName
+    principalType: postgresEntraAdminPrincipalType
+    tenantId: postgresEntraAdminTenantId
+  }
+  dependsOn: [
+    postgresServer
+  ]
+}
+
 output postgresServerName string = postgresServerName
 output postgresHost string = '${postgresServerName}.postgres.database.azure.com'
 output postgresPort int = 5432
 output postgresAdminLogin string = postgresAdminUser
 output postgresDatabaseName string = postgresDatabaseName
+

@@ -76,11 +76,41 @@ logger = logging.getLogger(__name__)
 def config():
     global _config
     if _config is None:
-        database_url = os.environ.get(
-            "ISUCONP_DATABASE_URL",
-            "postgresql://isuconp:isuconp@127.0.0.1:5432/isuconp",
-        )
-        db_conf = {"dsn": database_url}
+        db_auth_mode = os.environ.get("ISUCONP_DB_AUTH_MODE", "").lower()
+        if db_auth_mode == "managed_identity":
+            host = os.environ.get("ISUCONP_DB_HOST")
+            dbname = os.environ.get("ISUCONP_DB_NAME", "isuconp")
+            user = os.environ.get("ISUCONP_DB_USER")
+            port = int(os.environ.get("ISUCONP_DB_PORT", "5432"))
+            if not host or not user:
+                raise RuntimeError(
+                    "ISUCONP_DB_AUTH_MODE=managed_identity requires ISUCONP_DB_HOST and ISUCONP_DB_USER"
+                )
+            token = DefaultAzureCredential().get_token(
+                "https://ossrdbms-aad.database.windows.net/.default"
+            ).token
+            db_conf = {
+                "host": host,
+                "port": port,
+                "user": user,
+                "dbname": dbname,
+                "password": token,
+                "sslmode": "require",
+            }
+            logger.info(
+                "Using DB via managed identity token auth (%s@%s:%s/%s)",
+                user,
+                host,
+                port,
+                dbname,
+            )
+        else:
+            database_url = os.environ.get(
+                "ISUCONP_DATABASE_URL",
+                "postgresql://isuconp:isuconp@127.0.0.1:5432/isuconp?sslmode=disable",
+            )
+            db_conf = {"dsn": database_url}
+            logger.info("Using DB via ISUCONP_DATABASE_URL")
 
         _config = {
             "db": db_conf,
@@ -90,7 +120,6 @@ def config():
                 ),
             },
         }
-        logger.info("Using DB via ISUCONP_DATABASE_URL")
         logger.info("Using Memcached %s", _config["memcache"]["address"])
     return _config
 
@@ -221,8 +250,9 @@ def make_posts(results, all_comments=False):
 
 
 # app setup
-static_path = pathlib.Path(__file__).resolve().parent.parent / "public"
-app = flask.Flask(__name__, static_folder=str(static_path), static_url_path="")
+root_dir = pathlib.Path(__file__).resolve().parent
+public_dir = root_dir / "public"
+app = flask.Flask(__name__, static_folder=str(public_dir), static_url_path="")
 # app.debug = True
 
 # Flask-Session
@@ -266,6 +296,11 @@ def nl2br(eval_ctx, value):
 def get_initialize():
     db_initialize()
     return ""
+
+
+@app.route("/public/<path:filename>")
+def get_public_file(filename):
+    return flask.send_from_directory(str(public_dir), filename)
 
 
 @app.route("/login")

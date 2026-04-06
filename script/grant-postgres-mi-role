@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="${ROOT_DIR}/.env"
+
+usage() {
+  cat <<'EOF'
+Usage: script/grant-postgres-mi-role [options]
+
+Create/refresh Microsoft Entra role for Container App managed identity on PostgreSQL
+and grant required privileges to the application database.
+
+Options:
+  --server NAME         PostgreSQL server name (default: inferred from .env)
+  --database NAME       Database name (default: ISUCONP_DB_NAME from .env or isuconp)
+  --principal NAME      Entra principal name to map in PostgreSQL (default: CONTAINER_APP_NAME or privateisu app name)
+  --admin-user NAME     Entra admin user/principal name (default: current az account user.name)
+  --dry-run             Print commands only
+  -h, --help            Show this help
+EOF
+}
+
+log() {
+  echo "[grant-postgres-mi-role] $*"
+}
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Error: '${cmd}' is required but not installed." >&2
+    exit 1
+  fi
+}
+
+load_env_file() {
+  if [[ -f "${ENV_FILE}" ]]; then
+    log "Loading environment from ${ENV_FILE}"
+    set -a
+    # shellcheck disable=SC1090
+    source "${ENV_FILE}"
+    set +a
+  fi
+}
+
+run_az() {
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    local first=1
+    local arg
+    for arg in az "$@"; do
+      if [[ "${first}" -eq 1 ]]; then
+        printf '%q' "${arg}"
+        first=0
+      else
+        printf ' %q' "${arg}"
+      fi
+    done
+    printf '\n'
+    return 0
+  fi
+  az "$@"
+}
+
+infer_server_name() {
+  if [[ -n "${SERVER_NAME}" ]]; then
+    return 0
+  fi
+
+  local host="${ISUCONP_DB_HOST:-}"
+  if [[ -z "${host}" && -n "${ISUCONP_DATABASE_URL:-}" ]]; then
+    host="$(printf '%s' "${ISUCONP_DATABASE_URL}" | sed -n 's#.*@\([^:/?]*\).*#\1#p')"
+  fi
+  if [[ -z "${host}" ]]; then
+    return 1
+  fi
+  SERVER_NAME="${host%%.postgres.database.azure.com}"
+  [[ -n "${SERVER_NAME}" ]]
+}
+
+SERVER_NAME=""
+DATABASE_NAME=""
+PRINCIPAL_NAME=""
+ADMIN_USER=""
+DRY_RUN=0
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --server)
+        SERVER_NAME="${2:-}"
+        shift 2
+        ;;
+      --database)
+        DATABASE_NAME="${2:-}"
+        shift 2
+        ;;
+      --principal)
+        PRINCIPAL_NAME="${2:-}"
+        shift 2
+        ;;
+      --admin-user)
+        ADMIN_USER="${2:-}"
+        shift 2
+        ;;
+      --dry-run)
+        DRY_RUN=1
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        echo "Error: unknown option '$1'" >&2
+        usage
+        exit 1
+        ;;
+    esac
+  done
+}
+
+main() {
+  parse_args "$@"
+  require_cmd az
+  load_env_file
+
+  if ! infer_server_name; then
+    echo "Error: --server is required (or set ISUCONP_DB_HOST / ISUCONP_DATABASE_URL in .env)." >&2
+    exit 1
+  fi
+
+  if [[ -z "${DATABASE_NAME}" ]]; then
+    DATABASE_NAME="${ISUCONP_DB_NAME:-isuconp}"
+  fi
+  if [[ -z "${PRINCIPAL_NAME}" ]]; then
+    PRINCIPAL_NAME="${CONTAINER_APP_NAME:-}"
+  fi
+  if [[ -z "${PRINCIPAL_NAME}" ]]; then
+    echo "Error: --principal is required (or set CONTAINER_APP_NAME in .env)." >&2
+    exit 1
+  fi
+  if [[ -z "${ADMIN_USER}" ]]; then
+    ADMIN_USER="$(az account show --query user.name -o tsv)"
+  fi
+  if [[ -z "${ADMIN_USER}" ]]; then
+    echo "Error: failed to resolve --admin-user from Azure CLI." >&2
+    exit 1
+  fi
+
+  local access_token
+  access_token="$(az account get-access-token --resource-type oss-rdbms --query accessToken -o tsv)"
+  if [[ -z "${access_token}" ]]; then
+    echo "Error: failed to get access token for oss-rdbms." >&2
+    exit 1
+  fi
+
+  local create_principal_sql
+  create_principal_sql="$(cat <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${PRINCIPAL_NAME}') THEN
+    PERFORM pgaadauth_create_principal('${PRINCIPAL_NAME}', false, false);
+  END IF;
+END
+\$\$;
+SQL
+)"
+
+  local grant_sql
+  grant_sql="$(cat <<SQL
+GRANT CONNECT ON DATABASE ${DATABASE_NAME} TO "${PRINCIPAL_NAME}";
+GRANT USAGE ON SCHEMA public TO "${PRINCIPAL_NAME}";
+GRANT CREATE ON SCHEMA public TO "${PRINCIPAL_NAME}";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "${PRINCIPAL_NAME}";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "${PRINCIPAL_NAME}";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${PRINCIPAL_NAME}";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO "${PRINCIPAL_NAME}";
+SQL
+)"
+
+  log "Resolved parameters:"
+  log "SERVER_NAME=${SERVER_NAME}"
+  log "DATABASE_NAME=${DATABASE_NAME}"
+  log "PRINCIPAL_NAME=${PRINCIPAL_NAME}"
+  log "ADMIN_USER=${ADMIN_USER}"
+
+  log "Ensuring Entra principal exists as PostgreSQL role on postgres DB"
+  run_az postgres flexible-server execute \
+    --name "${SERVER_NAME}" \
+    --admin-user "${ADMIN_USER}" \
+    --admin-password "${access_token}" \
+    --database-name postgres \
+    --querytext "${create_principal_sql}" \
+    --output none
+
+  log "Granting database/schema/table privileges on ${DATABASE_NAME}"
+  run_az postgres flexible-server execute \
+    --name "${SERVER_NAME}" \
+    --admin-user "${ADMIN_USER}" \
+    --admin-password "${access_token}" \
+    --database-name "${DATABASE_NAME}" \
+    --querytext "${grant_sql}" \
+    --output none
+
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    log "Dry-run completed. No changes were applied."
+  else
+    log "PostgreSQL Entra role and grants configured successfully."
+  fi
+}
+
+main "$@"

@@ -3,7 +3,7 @@
 ////////////
 targetScope = 'subscription'
 
-metadata description = 'Deploy Azure Storage Account + Azure Database for PostgreSQL Flexible Server for private-isu'
+metadata description = 'Deploy Azure Storage Account + Azure Database for PostgreSQL Flexible Server + Azure Container Apps for private-isu'
 
 ////////////
 // Parameters
@@ -37,6 +37,20 @@ param postgresAdminPassword string
 @description('Application database name in PostgreSQL')
 param postgresDatabaseName string = 'isuconp'
 
+@description('Microsoft Entra admin principal object ID for PostgreSQL server')
+param postgresEntraAdminObjectId string
+
+@description('Microsoft Entra admin principal name (UPN/display name/app name)')
+param postgresEntraAdminPrincipalName string
+
+@description('Microsoft Entra admin principal type')
+@allowed([
+  'User'
+  'Group'
+  'ServicePrincipal'
+])
+param postgresEntraAdminPrincipalType string = 'User'
+
 @description('PostgreSQL server version')
 @allowed([
   '18'
@@ -56,6 +70,18 @@ param postgresSkuName string = 'Standard_B1ms'
 
 @description('PostgreSQL storage size in GiB')
 param postgresStorageSizeGB int = 32
+
+@description('Container Apps managed environment name')
+param containerAppsEnvironmentName string = 'privateisu-acaenv-${nowYyyymmddHhmm}'
+
+@description('Container App name')
+param containerAppName string = 'privateisu-app-${nowYyyymmddHhmm}'
+
+@description('Application container image (Docker Hub or ACR)')
+param appContainerImage string = 'docker.io/koudaiii/ai-tour-for-partner-2026-track4-session1:latest'
+
+@description('Memcached sidecar container image')
+param memcachedContainerImage string = 'docker.io/library/memcached:1.6'
 
 @description('Tags to apply to all resources')
 param tags object = {}
@@ -108,10 +134,33 @@ module postgres 'postgresql.bicep' = {
     postgresAdminUser: postgresAdminUser
     postgresAdminPassword: postgresAdminPassword
     postgresDatabaseName: postgresDatabaseName
+    postgresEntraAdminObjectId: postgresEntraAdminObjectId
+    postgresEntraAdminPrincipalName: postgresEntraAdminPrincipalName
+    postgresEntraAdminPrincipalType: postgresEntraAdminPrincipalType
+    postgresEntraAdminTenantId: subscription().tenantId
     postgresVersion: postgresVersion
     postgresTier: postgresTier
     postgresSkuName: postgresSkuName
     postgresStorageSizeGB: postgresStorageSizeGB
+  }
+}
+
+module containerApps 'containerapps.bicep' = {
+  name: 'containerAppsDeployment'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    containerAppsEnvironmentName: containerAppsEnvironmentName
+    containerAppName: containerAppName
+    appContainerImage: appContainerImage
+    memcachedContainerImage: memcachedContainerImage
+    azureStorageAccountUrl: storageAccount.outputs.primaryBlobEndpoint
+    azureStorageAccountResourceId: storageAccount.outputs.resourceId
+    azureStorageContainerName: containerName
+    postgresHost: postgres.outputs.postgresHost
+    postgresDatabaseName: postgresDatabaseName
+    postgresIdentityPrincipalName: containerAppName
   }
 }
 
@@ -147,4 +196,13 @@ output postgresAdminLogin string = postgres.outputs.postgresAdminLogin
 
 @description('PostgreSQL database name')
 output postgresDatabaseName string = postgres.outputs.postgresDatabaseName
+
+@description('Container App name')
+output containerAppName string = containerApps.outputs.containerAppName
+
+@description('Container App URL')
+output containerAppUrl string = containerApps.outputs.containerAppUrl
+
+@description('Container Apps managed environment name')
+output containerAppsEnvironmentName string = containerApps.outputs.managedEnvironmentName
 

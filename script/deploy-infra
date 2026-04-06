@@ -23,10 +23,22 @@ Options:
   --postgres-admin-user NAME  postgresAdminUser parameter value (default: isuconp)
   --postgres-password VALUE   postgresAdminPassword parameter value (default: auto-generated)
   --postgres-db-name NAME     postgresDatabaseName parameter value (default: isuconp)
+  --postgres-entra-admin-object-id VALUE
+                              postgresEntraAdminObjectId parameter value (default: signed-in principal object id)
+  --postgres-entra-admin-name VALUE
+                              postgresEntraAdminPrincipalName parameter value (default: signed-in principal name)
+  --postgres-entra-admin-type VALUE
+                              postgresEntraAdminPrincipalType parameter value (default: User or ServicePrincipal)
   --postgres-version VALUE    postgresVersion parameter value (default: 18; only 18 is supported)
   --postgres-tier VALUE       postgresTier parameter value (default: Burstable)
   --postgres-sku NAME         postgresSkuName parameter value (default: Standard_B1ms)
   --postgres-storage-gb NUM   postgresStorageSizeGB parameter value (default: 32)
+  --aca-env-name NAME         containerAppsEnvironmentName parameter value
+  --aca-app-name NAME         containerAppName parameter value
+  --app-image IMAGE           appContainerImage parameter value (default: docker.io/koudaiii/ai-tour-for-partner-2026-track4-session1:latest)
+  --memcached-image IMAGE     memcachedContainerImage parameter value (default: docker.io/library/memcached:1.6)
+  --skip-storage-role-grant   Skip running script/grant-storage-role after deploy
+  --skip-postgres-mi-grant    Skip running script/grant-postgres-mi-role after deploy
   --dry-run                   Run what-if instead of create
   -h, --help                  Show this help
 EOF
@@ -54,10 +66,17 @@ log_resolved_parameters() {
   log "POSTGRES_SERVER_NAME=${POSTGRES_SERVER_NAME}"
   log "POSTGRES_ADMIN_USER=${POSTGRES_ADMIN_USER}"
   log "POSTGRES_DB_NAME=${POSTGRES_DB_NAME}"
+  log "POSTGRES_ENTRA_ADMIN_OBJECT_ID=${POSTGRES_ENTRA_ADMIN_OBJECT_ID}"
+  log "POSTGRES_ENTRA_ADMIN_NAME=${POSTGRES_ENTRA_ADMIN_NAME}"
+  log "POSTGRES_ENTRA_ADMIN_TYPE=${POSTGRES_ENTRA_ADMIN_TYPE}"
   log "POSTGRES_VERSION=${POSTGRES_VERSION}"
   log "POSTGRES_TIER=${POSTGRES_TIER}"
   log "POSTGRES_SKU_NAME=${POSTGRES_SKU_NAME}"
   log "POSTGRES_STORAGE_GB=${POSTGRES_STORAGE_GB}"
+  log "CONTAINER_APPS_ENVIRONMENT_NAME=${CONTAINER_APPS_ENVIRONMENT_NAME}"
+  log "CONTAINER_APP_NAME=${CONTAINER_APP_NAME}"
+  log "APP_CONTAINER_IMAGE=${APP_CONTAINER_IMAGE}"
+  log "MEMCACHED_CONTAINER_IMAGE=${MEMCACHED_CONTAINER_IMAGE}"
   log "POSTGRES_ADMIN_PASSWORD=***"
   log "TAGS_JSON=${TAGS_JSON}"
 }
@@ -72,6 +91,10 @@ print_application_env() {
   echo "AZURE_STORAGE_ACCOUNT_URL=${account_url}"
   echo "AZURE_STORAGE_CONTAINER_NAME=${CONTAINER_NAME}"
   echo "ISUCONP_DATABASE_URL=${database_url}"
+  echo "ISUCONP_DB_HOST=${postgres_host}"
+  echo "ISUCONP_DB_NAME=${POSTGRES_DB_NAME}"
+  echo "CONTAINER_APP_NAME=${CONTAINER_APP_NAME}"
+  echo "# Container App: https://${CONTAINER_APP_NAME}.<generated-domain>"
 }
 
 write_application_env_file() {
@@ -82,12 +105,15 @@ write_application_env_file() {
   tmp_file="$(mktemp)"
 
   touch "${ENV_FILE}"
-  grep -vE '^(AZURE_STORAGE_ACCOUNT_URL|AZURE_STORAGE_CONTAINER_NAME|ISUCONP_DATABASE_URL|ISUCONP_DB_HOST|ISUCONP_DB_PORT|ISUCONP_DB_USER|ISUCONP_DB_PASSWORD|ISUCONP_DB_NAME)=' "${ENV_FILE}" > "${tmp_file}" || true
+  grep -vE '^(AZURE_STORAGE_ACCOUNT_URL|AZURE_STORAGE_CONTAINER_NAME|ISUCONP_DATABASE_URL|ISUCONP_DB_HOST|ISUCONP_DB_NAME|CONTAINER_APP_NAME|ISUCONP_DB_PORT|ISUCONP_DB_USER|ISUCONP_DB_PASSWORD)=' "${ENV_FILE}" > "${tmp_file}" || true
   {
     cat "${tmp_file}"
     echo "AZURE_STORAGE_ACCOUNT_URL=${account_url}"
     echo "AZURE_STORAGE_CONTAINER_NAME=${CONTAINER_NAME}"
     echo "ISUCONP_DATABASE_URL=${database_url}"
+    echo "ISUCONP_DB_HOST=${postgres_host}"
+    echo "ISUCONP_DB_NAME=${POSTGRES_DB_NAME}"
+    echo "CONTAINER_APP_NAME=${CONTAINER_APP_NAME}"
   } > "${ENV_FILE}"
   rm -f "${tmp_file}"
 
@@ -136,6 +162,18 @@ generate_postgres_server_name() {
   echo "privateisu-pg-${suffix}-${rand}" | cut -c1-63
 }
 
+generate_container_apps_environment_name() {
+  local suffix
+  suffix="${DATE_SUFFIX}"
+  echo "privateisu-acaenv-${suffix}" | cut -c1-32
+}
+
+generate_container_app_name() {
+  local suffix
+  suffix="${DATE_SUFFIX}"
+  echo "privateisu-app-${suffix}" | cut -c1-32
+}
+
 generate_postgres_password() {
   local upper lower digit special rest
   upper="$(LC_ALL=C tr -dc 'A-Z' </dev/urandom | head -c 1)"
@@ -144,6 +182,41 @@ generate_postgres_password() {
   special='!'
   rest="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)"
   echo "${upper}${lower}${digit}${special}${rest}"
+}
+
+resolve_postgres_entra_admin_defaults() {
+  if [[ -n "${POSTGRES_ENTRA_ADMIN_OBJECT_ID}" && -n "${POSTGRES_ENTRA_ADMIN_NAME}" ]]; then
+    return 0
+  fi
+
+  local object_id=""
+  local principal_name=""
+  local principal_type=""
+
+  object_id="$(az ad signed-in-user show --query id -o tsv 2>/dev/null || true)"
+  principal_name="$(az ad signed-in-user show --query userPrincipalName -o tsv 2>/dev/null || true)"
+  if [[ -n "${object_id}" && -n "${principal_name}" ]]; then
+    principal_type="User"
+  else
+    principal_name="$(az account show --query user.name -o tsv)"
+    object_id="$(az ad sp show --id "${principal_name}" --query id -o tsv 2>/dev/null || true)"
+    principal_type="ServicePrincipal"
+  fi
+
+  if [[ -z "${object_id}" || -z "${principal_name}" ]]; then
+    echo "Error: Failed to resolve default PostgreSQL Entra admin principal. Pass --postgres-entra-admin-object-id and --postgres-entra-admin-name explicitly." >&2
+    exit 1
+  fi
+
+  if [[ -z "${POSTGRES_ENTRA_ADMIN_OBJECT_ID}" ]]; then
+    POSTGRES_ENTRA_ADMIN_OBJECT_ID="${object_id}"
+  fi
+  if [[ -z "${POSTGRES_ENTRA_ADMIN_NAME}" ]]; then
+    POSTGRES_ENTRA_ADMIN_NAME="${principal_name}"
+  fi
+  if [[ -z "${POSTGRES_ENTRA_ADMIN_TYPE}" ]]; then
+    POSTGRES_ENTRA_ADMIN_TYPE="${principal_type}"
+  fi
 }
 
 LOCATION="japaneast"
@@ -155,11 +228,20 @@ POSTGRES_SERVER_NAME=""
 POSTGRES_ADMIN_USER="isuconp"
 POSTGRES_ADMIN_PASSWORD=""
 POSTGRES_DB_NAME="isuconp"
+POSTGRES_ENTRA_ADMIN_OBJECT_ID=""
+POSTGRES_ENTRA_ADMIN_NAME=""
+POSTGRES_ENTRA_ADMIN_TYPE=""
 POSTGRES_VERSION="18"
 POSTGRES_TIER="Burstable"
 POSTGRES_SKU_NAME="Standard_B1ms"
 POSTGRES_STORAGE_GB="32"
+CONTAINER_APPS_ENVIRONMENT_NAME=""
+CONTAINER_APP_NAME=""
+APP_CONTAINER_IMAGE="docker.io/koudaiii/ai-tour-for-partner-2026-track4-session1:latest"
+MEMCACHED_CONTAINER_IMAGE="docker.io/library/memcached:1.6"
 DRY_RUN=0
+RUN_STORAGE_ROLE_GRANT=1
+RUN_POSTGRES_MI_GRANT=1
 
 parse_args() {
   while [[ $# -gt 0 ]]; do
@@ -200,6 +282,18 @@ parse_args() {
         POSTGRES_DB_NAME="${2:-}"
         shift 2
         ;;
+      --postgres-entra-admin-object-id)
+        POSTGRES_ENTRA_ADMIN_OBJECT_ID="${2:-}"
+        shift 2
+        ;;
+      --postgres-entra-admin-name)
+        POSTGRES_ENTRA_ADMIN_NAME="${2:-}"
+        shift 2
+        ;;
+      --postgres-entra-admin-type)
+        POSTGRES_ENTRA_ADMIN_TYPE="${2:-}"
+        shift 2
+        ;;
       --postgres-version)
         POSTGRES_VERSION="${2:-}"
         shift 2
@@ -215,6 +309,30 @@ parse_args() {
       --postgres-storage-gb)
         POSTGRES_STORAGE_GB="${2:-}"
         shift 2
+        ;;
+      --aca-env-name)
+        CONTAINER_APPS_ENVIRONMENT_NAME="${2:-}"
+        shift 2
+        ;;
+      --aca-app-name)
+        CONTAINER_APP_NAME="${2:-}"
+        shift 2
+        ;;
+      --app-image)
+        APP_CONTAINER_IMAGE="${2:-}"
+        shift 2
+        ;;
+      --memcached-image)
+        MEMCACHED_CONTAINER_IMAGE="${2:-}"
+        shift 2
+        ;;
+      --skip-storage-role-grant)
+        RUN_STORAGE_ROLE_GRANT=0
+        shift
+        ;;
+      --skip-postgres-mi-grant)
+        RUN_POSTGRES_MI_GRANT=0
+        shift
         ;;
       --dry-run)
         DRY_RUN=1
@@ -265,6 +383,13 @@ validate_inputs() {
   if [[ -z "${POSTGRES_ADMIN_PASSWORD}" ]]; then
     POSTGRES_ADMIN_PASSWORD="$(generate_postgres_password)"
   fi
+  resolve_postgres_entra_admin_defaults
+  if [[ -z "${CONTAINER_APPS_ENVIRONMENT_NAME}" ]]; then
+    CONTAINER_APPS_ENVIRONMENT_NAME="$(generate_container_apps_environment_name)"
+  fi
+  if [[ -z "${CONTAINER_APP_NAME}" ]]; then
+    CONTAINER_APP_NAME="$(generate_container_app_name)"
+  fi
   if [[ ! "${POSTGRES_VERSION}" =~ ^18$ ]]; then
     echo "Error: --postgres-version must be 18." >&2
     exit 1
@@ -275,6 +400,10 @@ validate_inputs() {
   fi
   if [[ ! "${POSTGRES_STORAGE_GB}" =~ ^[0-9]+$ ]]; then
     echo "Error: --postgres-storage-gb must be an integer." >&2
+    exit 1
+  fi
+  if [[ ! "${POSTGRES_ENTRA_ADMIN_TYPE}" =~ ^(User|Group|ServicePrincipal)$ ]]; then
+    echo "Error: --postgres-entra-admin-type must be one of: User, Group, ServicePrincipal." >&2
     exit 1
   fi
 }
@@ -298,10 +427,17 @@ main() {
     "postgresAdminUser=${POSTGRES_ADMIN_USER}"
     "postgresAdminPassword=${POSTGRES_ADMIN_PASSWORD}"
     "postgresDatabaseName=${POSTGRES_DB_NAME}"
+    "postgresEntraAdminObjectId=${POSTGRES_ENTRA_ADMIN_OBJECT_ID}"
+    "postgresEntraAdminPrincipalName=${POSTGRES_ENTRA_ADMIN_NAME}"
+    "postgresEntraAdminPrincipalType=${POSTGRES_ENTRA_ADMIN_TYPE}"
     "postgresVersion=${POSTGRES_VERSION}"
     "postgresTier=${POSTGRES_TIER}"
     "postgresSkuName=${POSTGRES_SKU_NAME}"
     "postgresStorageSizeGB=${POSTGRES_STORAGE_GB}"
+    "containerAppsEnvironmentName=${CONTAINER_APPS_ENVIRONMENT_NAME}"
+    "containerAppName=${CONTAINER_APP_NAME}"
+    "appContainerImage=${APP_CONTAINER_IMAGE}"
+    "memcachedContainerImage=${MEMCACHED_CONTAINER_IMAGE}"
     "tags=${TAGS_JSON}"
   )
 
@@ -321,10 +457,17 @@ main() {
       "postgresAdminUser=${POSTGRES_ADMIN_USER}"
       "postgresAdminPassword=${POSTGRES_ADMIN_PASSWORD}"
       "postgresDatabaseName=${POSTGRES_DB_NAME}"
+      "postgresEntraAdminObjectId=${POSTGRES_ENTRA_ADMIN_OBJECT_ID}"
+      "postgresEntraAdminPrincipalName=${POSTGRES_ENTRA_ADMIN_NAME}"
+      "postgresEntraAdminPrincipalType=${POSTGRES_ENTRA_ADMIN_TYPE}"
       "postgresVersion=${POSTGRES_VERSION}"
       "postgresTier=${POSTGRES_TIER}"
       "postgresSkuName=${POSTGRES_SKU_NAME}"
       "postgresStorageSizeGB=${POSTGRES_STORAGE_GB}"
+      "containerAppsEnvironmentName=${CONTAINER_APPS_ENVIRONMENT_NAME}"
+      "containerAppName=${CONTAINER_APP_NAME}"
+      "appContainerImage=${APP_CONTAINER_IMAGE}"
+      "memcachedContainerImage=${MEMCACHED_CONTAINER_IMAGE}"
       "tags=${TAGS_JSON}"
     )
     log "Running what-if (no changes applied)"
@@ -338,6 +481,32 @@ main() {
   log "Deployment completed"
   print_application_env
   write_application_env_file
+
+  if [[ "${RUN_STORAGE_ROLE_GRANT}" -eq 1 ]]; then
+    if [[ -x "${ROOT_DIR}/script/grant-storage-role" ]]; then
+      log "Granting Storage Blob Data Contributor role for current signed-in principal"
+      "${ROOT_DIR}/script/grant-storage-role" --storage-account "${STORAGE_ACCOUNT_NAME}"
+    else
+      log "Warning: script/grant-storage-role not found or not executable. Run it manually."
+    fi
+  else
+    log "Skipped storage role grant (--skip-storage-role-grant)"
+  fi
+
+  if [[ "${RUN_POSTGRES_MI_GRANT}" -eq 1 ]]; then
+    if [[ -x "${ROOT_DIR}/script/grant-postgres-mi-role" ]]; then
+      log "Granting PostgreSQL privileges for Container App managed identity"
+      "${ROOT_DIR}/script/grant-postgres-mi-role" \
+        --server "${POSTGRES_SERVER_NAME}" \
+        --database "${POSTGRES_DB_NAME}" \
+        --principal "${CONTAINER_APP_NAME}" \
+        --admin-user "${POSTGRES_ENTRA_ADMIN_NAME}"
+    else
+      log "Warning: script/grant-postgres-mi-role not found or not executable. Run it manually."
+    fi
+  else
+    log "Skipped PostgreSQL managed identity grant (--skip-postgres-mi-grant)"
+  fi
 }
 
 main "$@"

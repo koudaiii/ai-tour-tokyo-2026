@@ -6,9 +6,9 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "5793098599938942660"
+      "templateHash": "510759513003839524"
     },
-    "description": "Deploy Azure Storage Account + Azure Database for PostgreSQL Flexible Server for private-isu"
+    "description": "Deploy Azure Storage Account + Azure Database for PostgreSQL Flexible Server + Azure Container Apps for private-isu"
   },
   "parameters": {
     "location": {
@@ -67,6 +67,30 @@
         "description": "Application database name in PostgreSQL"
       }
     },
+    "postgresEntraAdminObjectId": {
+      "type": "string",
+      "metadata": {
+        "description": "Microsoft Entra admin principal object ID for PostgreSQL server"
+      }
+    },
+    "postgresEntraAdminPrincipalName": {
+      "type": "string",
+      "metadata": {
+        "description": "Microsoft Entra admin principal name (UPN/display name/app name)"
+      }
+    },
+    "postgresEntraAdminPrincipalType": {
+      "type": "string",
+      "defaultValue": "User",
+      "allowedValues": [
+        "User",
+        "Group",
+        "ServicePrincipal"
+      ],
+      "metadata": {
+        "description": "Microsoft Entra admin principal type"
+      }
+    },
     "postgresVersion": {
       "type": "string",
       "defaultValue": "18",
@@ -101,6 +125,34 @@
       "defaultValue": 32,
       "metadata": {
         "description": "PostgreSQL storage size in GiB"
+      }
+    },
+    "containerAppsEnvironmentName": {
+      "type": "string",
+      "defaultValue": "[format('privateisu-acaenv-{0}', parameters('nowYyyymmddHhmm'))]",
+      "metadata": {
+        "description": "Container Apps managed environment name"
+      }
+    },
+    "containerAppName": {
+      "type": "string",
+      "defaultValue": "[format('privateisu-app-{0}', parameters('nowYyyymmddHhmm'))]",
+      "metadata": {
+        "description": "Container App name"
+      }
+    },
+    "appContainerImage": {
+      "type": "string",
+      "defaultValue": "docker.io/koudaiii/ai-tour-for-partner-2026-track4-session1:latest",
+      "metadata": {
+        "description": "Application container image (Docker Hub or ACR)"
+      }
+    },
+    "memcachedContainerImage": {
+      "type": "string",
+      "defaultValue": "docker.io/library/memcached:1.6",
+      "metadata": {
+        "description": "Memcached sidecar container image"
       }
     },
     "tags": {
@@ -8311,6 +8363,18 @@
           "postgresDatabaseName": {
             "value": "[parameters('postgresDatabaseName')]"
           },
+          "postgresEntraAdminObjectId": {
+            "value": "[parameters('postgresEntraAdminObjectId')]"
+          },
+          "postgresEntraAdminPrincipalName": {
+            "value": "[parameters('postgresEntraAdminPrincipalName')]"
+          },
+          "postgresEntraAdminPrincipalType": {
+            "value": "[parameters('postgresEntraAdminPrincipalType')]"
+          },
+          "postgresEntraAdminTenantId": {
+            "value": "[subscription().tenantId]"
+          },
           "postgresVersion": {
             "value": "[parameters('postgresVersion')]"
           },
@@ -8331,7 +8395,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "6598135960474079530"
+              "templateHash": "4968363033862096191"
             }
           },
           "parameters": {
@@ -8370,6 +8434,36 @@
               "type": "string",
               "metadata": {
                 "description": "Application database name"
+              }
+            },
+            "postgresEntraAdminObjectId": {
+              "type": "string",
+              "metadata": {
+                "description": "Microsoft Entra admin principal object ID for PostgreSQL server"
+              }
+            },
+            "postgresEntraAdminPrincipalName": {
+              "type": "string",
+              "metadata": {
+                "description": "Microsoft Entra admin principal name (UPN/display name/app name)"
+              }
+            },
+            "postgresEntraAdminPrincipalType": {
+              "type": "string",
+              "defaultValue": "User",
+              "allowedValues": [
+                "User",
+                "Group",
+                "ServicePrincipal"
+              ],
+              "metadata": {
+                "description": "Microsoft Entra admin principal type"
+              }
+            },
+            "postgresEntraAdminTenantId": {
+              "type": "string",
+              "metadata": {
+                "description": "Tenant ID for Microsoft Entra admin"
               }
             },
             "postgresVersion": {
@@ -8411,6 +8505,20 @@
           },
           "resources": [
             {
+              "condition": "[and(not(empty(parameters('postgresEntraAdminObjectId'))), not(empty(parameters('postgresEntraAdminPrincipalName'))))]",
+              "type": "Microsoft.DBforPostgreSQL/flexibleServers/administrators",
+              "apiVersion": "2024-08-01",
+              "name": "[format('{0}/{1}', parameters('postgresServerName'), parameters('postgresEntraAdminObjectId'))]",
+              "properties": {
+                "principalName": "[parameters('postgresEntraAdminPrincipalName')]",
+                "principalType": "[parameters('postgresEntraAdminPrincipalType')]",
+                "tenantId": "[parameters('postgresEntraAdminTenantId')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Resources/deployments', 'postgresFlexibleServerDeployment')]"
+              ]
+            },
+            {
               "type": "Microsoft.Resources/deployments",
               "apiVersion": "2025-04-01",
               "name": "postgresFlexibleServerDeployment",
@@ -8447,7 +8555,8 @@
                   "authConfig": {
                     "value": {
                       "activeDirectoryAuth": "Enabled",
-                      "passwordAuth": "Enabled"
+                      "passwordAuth": "Enabled",
+                      "tenantId": "[parameters('postgresEntraAdminTenantId')]"
                     }
                   },
                   "version": {
@@ -11098,6 +11207,290 @@
       "dependsOn": [
         "rg"
       ]
+    },
+    "containerApps": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "containerAppsDeployment",
+      "resourceGroup": "[variables('resourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "containerAppsEnvironmentName": {
+            "value": "[parameters('containerAppsEnvironmentName')]"
+          },
+          "containerAppName": {
+            "value": "[parameters('containerAppName')]"
+          },
+          "appContainerImage": {
+            "value": "[parameters('appContainerImage')]"
+          },
+          "memcachedContainerImage": {
+            "value": "[parameters('memcachedContainerImage')]"
+          },
+          "azureStorageAccountUrl": {
+            "value": "[reference('storageAccount').outputs.primaryBlobEndpoint.value]"
+          },
+          "azureStorageAccountResourceId": {
+            "value": "[reference('storageAccount').outputs.resourceId.value]"
+          },
+          "azureStorageContainerName": {
+            "value": "[parameters('containerName')]"
+          },
+          "postgresHost": {
+            "value": "[reference('postgres').outputs.postgresHost.value]"
+          },
+          "postgresDatabaseName": {
+            "value": "[parameters('postgresDatabaseName')]"
+          },
+          "postgresIdentityPrincipalName": {
+            "value": "[parameters('containerAppName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "7252339099263140676"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "The Azure region for Container Apps resource deployment"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags to apply to Container Apps resources"
+              }
+            },
+            "containerAppsEnvironmentName": {
+              "type": "string",
+              "metadata": {
+                "description": "Container Apps managed environment name"
+              }
+            },
+            "containerAppName": {
+              "type": "string",
+              "metadata": {
+                "description": "Container App name"
+              }
+            },
+            "appContainerImage": {
+              "type": "string",
+              "metadata": {
+                "description": "Application container image"
+              }
+            },
+            "memcachedContainerImage": {
+              "type": "string",
+              "defaultValue": "docker.io/library/memcached:1.6",
+              "metadata": {
+                "description": "Memcached sidecar container image"
+              }
+            },
+            "azureStorageAccountUrl": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure Blob Storage account URL"
+              }
+            },
+            "azureStorageAccountResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure Blob Storage account resource ID"
+              }
+            },
+            "azureStorageContainerName": {
+              "type": "string",
+              "defaultValue": "images",
+              "metadata": {
+                "description": "Azure Blob Storage container name"
+              }
+            },
+            "postgresHost": {
+              "type": "string",
+              "metadata": {
+                "description": "PostgreSQL server host FQDN"
+              }
+            },
+            "postgresDatabaseName": {
+              "type": "string",
+              "metadata": {
+                "description": "PostgreSQL database name"
+              }
+            },
+            "postgresIdentityPrincipalName": {
+              "type": "string",
+              "metadata": {
+                "description": "PostgreSQL Entra principal name used by app managed identity"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/managedEnvironments",
+              "apiVersion": "2024-03-01",
+              "name": "[parameters('containerAppsEnvironmentName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "appLogsConfiguration": {
+                  "destination": "none"
+                }
+              }
+            },
+            {
+              "type": "Microsoft.App/containerApps",
+              "apiVersion": "2024-03-01",
+              "name": "[parameters('containerAppName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('containerAppsEnvironmentName'))]",
+                "configuration": {
+                  "activeRevisionsMode": "Single",
+                  "ingress": {
+                    "external": true,
+                    "targetPort": 8080,
+                    "transport": "auto",
+                    "allowInsecure": false
+                  }
+                },
+                "template": {
+                  "containers": [
+                    {
+                      "name": "app",
+                      "image": "[parameters('appContainerImage')]",
+                      "resources": {
+                        "cpu": "[json('0.5')]",
+                        "memory": "1Gi"
+                      },
+                      "env": [
+                        {
+                          "name": "ISUCONP_DB_AUTH_MODE",
+                          "value": "managed_identity"
+                        },
+                        {
+                          "name": "ISUCONP_DB_HOST",
+                          "value": "[parameters('postgresHost')]"
+                        },
+                        {
+                          "name": "ISUCONP_DB_PORT",
+                          "value": "5432"
+                        },
+                        {
+                          "name": "ISUCONP_DB_NAME",
+                          "value": "[parameters('postgresDatabaseName')]"
+                        },
+                        {
+                          "name": "ISUCONP_DB_USER",
+                          "value": "[parameters('postgresIdentityPrincipalName')]"
+                        },
+                        {
+                          "name": "ISUCONP_MEMCACHED_ADDRESS",
+                          "value": "127.0.0.1:11211"
+                        },
+                        {
+                          "name": "AZURE_STORAGE_ACCOUNT_URL",
+                          "value": "[parameters('azureStorageAccountUrl')]"
+                        },
+                        {
+                          "name": "AZURE_STORAGE_CONTAINER_NAME",
+                          "value": "[parameters('azureStorageContainerName')]"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "memcached",
+                      "image": "[parameters('memcachedContainerImage')]",
+                      "resources": {
+                        "cpu": "[json('0.25')]",
+                        "memory": "0.5Gi"
+                      }
+                    }
+                  ],
+                  "scale": {
+                    "minReplicas": 1,
+                    "maxReplicas": 1
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/managedEnvironments', parameters('containerAppsEnvironmentName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.Storage/storageAccounts', last(split(parameters('azureStorageAccountResourceId'), '/')))]",
+              "name": "[guid(parameters('azureStorageAccountResourceId'), parameters('containerAppName'), 'Storage Blob Data Contributor')]",
+              "properties": {
+                "principalId": "[reference(resourceId('Microsoft.App/containerApps', parameters('containerAppName')), '2024-03-01', 'full').identity.principalId]",
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/containerApps', parameters('containerAppName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "containerAppName": {
+              "type": "string",
+              "value": "[parameters('containerAppName')]"
+            },
+            "containerAppPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.App/containerApps', parameters('containerAppName')), '2024-03-01', 'full').identity.principalId]"
+            },
+            "containerAppFqdn": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.App/containerApps', parameters('containerAppName')), '2024-03-01').configuration.ingress.fqdn]"
+            },
+            "containerAppUrl": {
+              "type": "string",
+              "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', parameters('containerAppName')), '2024-03-01').configuration.ingress.fqdn)]"
+            },
+            "managedEnvironmentName": {
+              "type": "string",
+              "value": "[parameters('containerAppsEnvironmentName')]"
+            },
+            "managedEnvironmentId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.App/managedEnvironments', parameters('containerAppsEnvironmentName'))]"
+            },
+            "postgresIdentityPrincipalName": {
+              "type": "string",
+              "value": "[parameters('postgresIdentityPrincipalName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "postgres",
+        "rg",
+        "storageAccount"
+      ]
     }
   },
   "outputs": {
@@ -11170,6 +11563,27 @@
         "description": "PostgreSQL database name"
       },
       "value": "[reference('postgres').outputs.postgresDatabaseName.value]"
+    },
+    "containerAppName": {
+      "type": "string",
+      "metadata": {
+        "description": "Container App name"
+      },
+      "value": "[reference('containerApps').outputs.containerAppName.value]"
+    },
+    "containerAppUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "Container App URL"
+      },
+      "value": "[reference('containerApps').outputs.containerAppUrl.value]"
+    },
+    "containerAppsEnvironmentName": {
+      "type": "string",
+      "metadata": {
+        "description": "Container Apps managed environment name"
+      },
+      "value": "[reference('containerApps').outputs.managedEnvironmentName.value]"
     }
   }
 }
