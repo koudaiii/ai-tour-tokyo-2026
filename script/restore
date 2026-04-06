@@ -33,14 +33,7 @@ run_fix_sequences() {
     return 0
   fi
 
-  PGPASSWORD="${ISUCONP_DB_PASSWORD}" \
-    psql \
-      -v ON_ERROR_STOP=1 \
-      -h "${ISUCONP_DB_HOST}" \
-      -p "${ISUCONP_DB_PORT}" \
-      -U "${ISUCONP_DB_USER}" \
-      -d "${ISUCONP_DB_NAME}" \
-      -f "${FIX_SEQUENCES_SQL}" >/dev/null
+  psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -f "${FIX_SEQUENCES_SQL}" >/dev/null
 }
 
 resolve_pg_restore_bin() {
@@ -78,6 +71,7 @@ fi
 load_env_file
 
 PG_RESTORE_BIN="$(resolve_pg_restore_bin)"
+DATABASE_URL="${ISUCONP_DATABASE_URL:-postgresql://isuconp:isuconp@127.0.0.1:5432/isuconp}"
 
 if [[ -n "${POSTGRES_USER:-}" && -n "${POSTGRES_DB:-}" ]]; then
   echo "[restore] restoring ${DUMP_PATH} into ${POSTGRES_DB} (docker-entrypoint mode)"
@@ -94,21 +88,11 @@ if [[ -n "${POSTGRES_USER:-}" && -n "${POSTGRES_DB:-}" ]]; then
   exit 0
 fi
 
-ISUCONP_DB_HOST="${ISUCONP_DB_HOST:-127.0.0.1}"
-ISUCONP_DB_PORT="${ISUCONP_DB_PORT:-5432}"
-ISUCONP_DB_USER="${ISUCONP_DB_USER:-isuconp}"
-ISUCONP_DB_PASSWORD="${ISUCONP_DB_PASSWORD:-isuconp}"
-ISUCONP_DB_NAME="${ISUCONP_DB_NAME:-isuconp}"
-
-echo "[restore] restoring ${DUMP_PATH} into ${ISUCONP_DB_NAME} on ${ISUCONP_DB_HOST}:${ISUCONP_DB_PORT}"
-if ! PGPASSWORD="${ISUCONP_DB_PASSWORD}" \
-  "${PG_RESTORE_BIN}" \
-    "${RESTORE_COMMON_OPTS[@]}" \
-    -h "${ISUCONP_DB_HOST}" \
-    -p "${ISUCONP_DB_PORT}" \
-    -U "${ISUCONP_DB_USER}" \
-    -d "${ISUCONP_DB_NAME}" \
-    "${DUMP_PATH}"; then
+echo "[restore] restoring ${DUMP_PATH} using ISUCONP_DATABASE_URL"
+if ! "${PG_RESTORE_BIN}" \
+  "${RESTORE_COMMON_OPTS[@]}" \
+  -d "${DATABASE_URL}" \
+  "${DUMP_PATH}"; then
   echo "[restore] restore failed using ${PG_RESTORE_BIN}" >&2
   echo "[restore] If you see 'unsupported version ... in file header', install newer PostgreSQL client tools." >&2
   exit 1

@@ -15,12 +15,7 @@ Options:
   -h, --help         Show this help
 
 Environment:
-  ISUCONP_DATABASE_URL  PostgreSQL URL (takes precedence over ISUCONP_DB_*)
-  ISUCONP_DB_HOST       Default: localhost
-  ISUCONP_DB_PORT       Default: 5432
-  ISUCONP_DB_USER       Default: isuconp
-  ISUCONP_DB_PASSWORD   Default: isuconp
-  ISUCONP_DB_NAME       Default: isuconp
+  ISUCONP_DATABASE_URL  PostgreSQL URL (default: postgresql://isuconp:isuconp@127.0.0.1:5432/isuconp)
 EOF
 }
 
@@ -93,26 +88,10 @@ if [[ "${RAW_DUMP}" == *.bz2 ]]; then
   RAW_DUMP="${RAW_DUMP%.bz2}"
 fi
 
-if [[ -n "${ISUCONP_DATABASE_URL:-}" ]]; then
-  log "Creating backup using ISUCONP_DATABASE_URL"
-  pg_dump "${ISUCONP_DATABASE_URL}" "${PG_DUMP_COMMON_OPTS[@]}" -f "${RAW_DUMP}"
-else
-  ISUCONP_DB_HOST="${ISUCONP_DB_HOST:-localhost}"
-  ISUCONP_DB_PORT="${ISUCONP_DB_PORT:-5432}"
-  ISUCONP_DB_USER="${ISUCONP_DB_USER:-isuconp}"
-  ISUCONP_DB_PASSWORD="${ISUCONP_DB_PASSWORD:-isuconp}"
-  ISUCONP_DB_NAME="${ISUCONP_DB_NAME:-isuconp}"
-
-  log "Creating backup from ${ISUCONP_DB_USER}@${ISUCONP_DB_HOST}:${ISUCONP_DB_PORT}/${ISUCONP_DB_NAME}"
-  log "Ownership/privileges metadata is excluded for portable restore"
-  PGPASSWORD="${ISUCONP_DB_PASSWORD}" pg_dump \
-    "${PG_DUMP_COMMON_OPTS[@]}" \
-    -h "${ISUCONP_DB_HOST}" \
-    -p "${ISUCONP_DB_PORT}" \
-    -U "${ISUCONP_DB_USER}" \
-    -d "${ISUCONP_DB_NAME}" \
-    -f "${RAW_DUMP}"
-fi
+DATABASE_URL="${ISUCONP_DATABASE_URL:-postgresql://isuconp:isuconp@127.0.0.1:5432/isuconp}"
+log "Creating backup using ISUCONP_DATABASE_URL"
+log "Ownership/privileges metadata is excluded for portable restore"
+pg_dump "${DATABASE_URL}" "${PG_DUMP_COMMON_OPTS[@]}" -f "${RAW_DUMP}"
 
 log "Compressing with bzip2"
 bzip2 -f "${RAW_DUMP}"

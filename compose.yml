@@ -22,11 +22,7 @@ services:
       memcached:
         condition: service_started
     environment:
-      ISUCONP_DB_HOST: postgres
-      ISUCONP_DB_PORT: 5432
-      ISUCONP_DB_USER: isuconp
-      ISUCONP_DB_PASSWORD: isuconp
-      ISUCONP_DB_NAME: isuconp
+      ISUCONP_DATABASE_URL: postgresql://isuconp:isuconp@postgres:5432/isuconp
       ISUCONP_MEMCACHED_ADDRESS: memcached:11211
       AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-}
       AZURE_STORAGE_ACCOUNT_URL: ${AZURE_STORAGE_ACCOUNT_URL:-}

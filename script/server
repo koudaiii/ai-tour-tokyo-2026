@@ -40,30 +40,14 @@ check_db_connection() {
   fi
 
   local output
-  local -a cmd=(psql -v ON_ERROR_STOP=1 -Atqc "SELECT 1;")
-  if [[ -n "${ISUCONP_DATABASE_URL:-}" ]]; then
-    cmd=(psql "${ISUCONP_DATABASE_URL}" -v ON_ERROR_STOP=1 -Atqc "SELECT 1;")
-  else
-    cmd+=(
-      -h "${ISUCONP_DB_HOST:-localhost}"
-      -p "${ISUCONP_DB_PORT:-5432}"
-      -U "${ISUCONP_DB_USER:-isuconp}"
-      -d "${ISUCONP_DB_NAME:-isuconp}"
-    )
-  fi
+  local database_url="${ISUCONP_DATABASE_URL:-postgresql://isuconp:isuconp@127.0.0.1:5432/isuconp}"
+  local -a cmd=(psql "${database_url}" -v ON_ERROR_STOP=1 -Atqc "SELECT 1;")
 
   log "Checking PostgreSQL connection before app start"
-  if [[ -n "${ISUCONP_DB_PASSWORD:-}" ]]; then
-    output="$(PGPASSWORD="${ISUCONP_DB_PASSWORD}" "${cmd[@]}" 2>&1)" || {
-      echo "Error: PostgreSQL connection precheck failed: ${output}" >&2
-      exit 1
-    }
-  else
-    output="$("${cmd[@]}" 2>&1)" || {
-      echo "Error: PostgreSQL connection precheck failed: ${output}" >&2
-      exit 1
-    }
-  fi
+  output="$("${cmd[@]}" 2>&1)" || {
+    echo "Error: PostgreSQL connection precheck failed: ${output}" >&2
+    exit 1
+  }
 }
 
 load_env_file

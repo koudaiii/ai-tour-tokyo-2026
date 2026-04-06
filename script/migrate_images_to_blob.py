@@ -11,11 +11,7 @@ Environment variables:
     AZURE_STORAGE_CONNECTION_STRING  Connection string (dev)
     AZURE_STORAGE_ACCOUNT_URL        Account URL for DefaultAzureCredential (prod)
     AZURE_STORAGE_CONTAINER_NAME     Container name (default: images)
-    ISUCONP_DB_HOST                  Database host (default: localhost)
-    ISUCONP_DB_PORT                  Database port (default: 5432)
-    ISUCONP_DB_USER                  Database user (default: isuconp)
-    ISUCONP_DB_PASSWORD              Database password
-    ISUCONP_DB_NAME                  Database name (default: isuconp)
+    ISUCONP_DATABASE_URL             PostgreSQL URL (default: postgresql://isuconp:isuconp@127.0.0.1:5432/isuconp)
 """
 
 import os
@@ -59,17 +55,14 @@ def main():
     container = blob_service.get_container_client(container_name)
 
     # Setup DB connection
-    db_conf = {
-        "host": os.environ.get("ISUCONP_DB_HOST", "localhost"),
-        "port": int(os.environ.get("ISUCONP_DB_PORT", "5432")),
-        "user": os.environ.get("ISUCONP_DB_USER", "isuconp"),
-        "dbname": os.environ.get("ISUCONP_DB_NAME", "isuconp"),
-    }
-    password = os.environ.get("ISUCONP_DB_PASSWORD")
-    if password:
-        db_conf["password"] = password
-
-    conn = psycopg2.connect(cursor_factory=psycopg2.extras.RealDictCursor, **db_conf)
+    database_url = os.environ.get(
+        "ISUCONP_DATABASE_URL",
+        "postgresql://isuconp:isuconp@127.0.0.1:5432/isuconp",
+    )
+    conn = psycopg2.connect(
+        database_url,
+        cursor_factory=psycopg2.extras.RealDictCursor,
+    )
     conn.autocommit = True
 
     # Find posts that have imgdata but no img_blob_key
