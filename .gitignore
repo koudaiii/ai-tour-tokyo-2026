@@ -5,3 +5,4 @@ __azurite_db*__.json
 __blobstorage__/
 __queuestorage__/
 AzuriteConfig
+provisioning/seed/images
