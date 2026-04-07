@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="${ROOT_DIR}/.env"
+
+usage() {
+  cat <<'EOF'
+Usage: script/deploy-func [options]
+
+Deploy mcp-server code to Azure Functions.
+
+Options:
+  --name NAME   Function App name (default: read from .env FUNCTION_APP_NAME)
+  -h, --help    Show this help
+EOF
+}
+
+log() {
+  echo "[deploy-func] $*"
+}
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Error: '${cmd}' is required but not installed." >&2
+    exit 1
+  fi
+}
+
+FUNCTION_APP_NAME=""
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --name)
+        FUNCTION_APP_NAME="${2:-}"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        echo "Error: unknown option '$1'" >&2
+        usage
+        exit 1
+        ;;
+    esac
+  done
+}
+
+resolve_function_app_name() {
+  if [[ -n "${FUNCTION_APP_NAME}" ]]; then
+    return 0
+  fi
+
+  if [[ -f "${ENV_FILE}" ]]; then
+    FUNCTION_APP_NAME="$(grep '^FUNCTION_APP_NAME=' "${ENV_FILE}" | cut -d= -f2- || true)"
+  fi
+
+  if [[ -z "${FUNCTION_APP_NAME}" ]]; then
+    echo "Error: FUNCTION_APP_NAME not found. Pass --name or run script/deploy-infra first." >&2
+    exit 1
+  fi
+}
+
+main() {
+  parse_args "$@"
+  require_cmd func
+  resolve_function_app_name
+
+  log "Deploying mcp-server to ${FUNCTION_APP_NAME}"
+
+  cd "${ROOT_DIR}/mcp-server"
+  func azure functionapp publish "${FUNCTION_APP_NAME}"
+
+  log "Deploy complete"
+  log "MCP endpoint: https://${FUNCTION_APP_NAME}.azurewebsites.net/runtime/webhooks/mcp"
+}
+
+main "$@"
