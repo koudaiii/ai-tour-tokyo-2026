@@ -56,7 +56,7 @@ Ubuntu 24.04
 
 ## 起動方法
 
-**重要:** 以下のいずれの手順を実行する前にも、まずプロジェクトのルートディレクトリで `make init` を実行して初期データを準備してください。
+**重要:** 以下のいずれの手順を実行する前にも、まずプロジェクトのルートディレクトリで `script/bootstrap` を実行してDB作成・テーブル作成を済ませてください。
 
 * Docker Composeを利用したローカル開発を推奨します。
 
@@ -86,24 +86,19 @@ $ /home/isucon/private_isu/benchmarker/bin/benchmarker -u /home/isucon/private_i
 
 PostgreSQLとmemcachedを起動した上で、以下の手順を実行してください。
 
-1. PostgreSQL用データを準備:
+1. DB作成・テーブル作成:
 ```sh
-make init
-```
-
-2. PostgreSQLにデータをロード:
-```sh
-make restore
+script/bootstrap
 ```
 
 補足: `script/bootstrap` の自動チェック/修復で使うSQLヘルパーは、DB名/ユーザー/パスワードを `isuconp` 固定で扱います。
 
-3. アプリケーションを起動:
+2. アプリケーションを起動:
 ```sh
 script/server
 ```
 
-4. ベンチマーカーを実行:
+3. ベンチマーカーを実行:
 ```sh
 cd benchmarker
 make
@@ -114,7 +109,7 @@ make
 
 #### Docker Compose
 
-起動前に`sql/isuconp_data.dump`（PostgreSQLロード用データ）が配置されている必要があります。`make init`で生成できます。初回起動時は`script/restore`がこのdumpを`pg_restore`します。
+起動前に `script/bootstrap --with-compose` を実行し、DB作成・テーブル作成を行ってください。
 
 ```sh
 script/bootstrap --with-compose

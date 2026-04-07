@@ -16,6 +16,7 @@ Options:
   --name NAME            VM name (default: private-isu-app)
   --resource-group NAME  Azure resource group (default: rg-private-isu-YYYYMMDDHHmm)
   --location LOCATION    Azure location (default: japaneast)
+  --image IMAGE_URN      VM image URN (default: Canonical:ubuntu-24_04-lts:server:latest)
   --size SIZE            Override VM size (default: profile-based; player=Standard_F2s_v2, bench=Standard_F4s_v2)
   --admin-user USER      Admin username (default: azureuser)
   --ssh-key PATH         SSH public key path (default: ~/.ssh/id_ed25519.pub)
@@ -117,15 +118,15 @@ create_vm() {
   fi
   run_az "${group_create_cmd[@]}"
 
-  log "Creating VM: ${VM_NAME} (size=${SIZE}, profile=${PROFILE})"
+  log "Creating VM: ${VM_NAME} (size=${SIZE}, profile=${PROFILE}, image=${IMAGE_URN})"
   run_az vm create \
     --resource-group "${RESOURCE_GROUP}" \
     --name "${VM_NAME}" \
-    --image Ubuntu2404 \
+    --image "${IMAGE_URN}" \
     --size "${SIZE}" \
     --admin-username "${ADMIN_USER}" \
     --ssh-key-values "${SSH_KEY_PATH}" \
-    --custom-data "@${CLOUD_CONFIG_TEMPLATE}" \
+    --custom-data "${CLOUD_CONFIG_TEMPLATE}" \
     --public-ip-sku Standard \
     --output none
 
@@ -157,6 +158,7 @@ PROFILE="player"
 VM_NAME="private-isu-app"
 RESOURCE_GROUP="rg-private-isu-${NOW_YYYYMMDDHHMM}"
 LOCATION="japaneast"
+IMAGE_URN="Canonical:ubuntu-24_04-lts:server:latest"
 ADMIN_USER="azureuser"
 SSH_KEY_PATH="${HOME}/.ssh/id_ed25519.pub"
 SIZE=""
@@ -184,6 +186,10 @@ parse_args() {
         ;;
       --location)
         LOCATION="${2:-}"
+        shift 2
+        ;;
+      --image)
+        IMAGE_URN="${2:-}"
         shift 2
         ;;
       --size)

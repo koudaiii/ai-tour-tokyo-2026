@@ -1,8 +1,0 @@
-- hosts: bench
-  become: yes
-  become_user: isucon
-  gather_facts: no
-  tasks:
-    - name: create userdata
-      tags: userdata
-      ansible.builtin.unarchive: src=/home/isucon/private_isu.git/seed/images.zip dest=/home/isucon/private_isu.git/seed/images remote_src=yes

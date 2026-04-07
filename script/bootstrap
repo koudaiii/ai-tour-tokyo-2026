@@ -344,9 +344,9 @@ check_db_state() {
 
     if (( ${#missing_tables[@]} > 0 )); then
       if [[ -n "${ISUCONP_DATABASE_URL:-}" ]]; then
-        error_exit "Missing tables: ${missing_tables[*]}. Load schema with: psql \"\${ISUCONP_DATABASE_URL}\" -v ON_ERROR_STOP=1 -f sql/bootstrap_create_table.sql then restore dump with: script/restore"
+        error_exit "Missing tables: ${missing_tables[*]}. Load schema with: psql \"\${ISUCONP_DATABASE_URL}\" -v ON_ERROR_STOP=1 -f sql/bootstrap_create_table.sql"
       fi
-      error_exit "Missing tables: ${missing_tables[*]}. Load schema with: psql -h ${ISUCONP_DB_HOST} -p ${ISUCONP_DB_PORT} -U ${ISUCONP_DB_USER} -d ${ISUCONP_DB_NAME} -v ON_ERROR_STOP=1 -f sql/bootstrap_create_table.sql then restore dump with: script/restore"
+      error_exit "Missing tables: ${missing_tables[*]}. Load schema with: psql -h ${ISUCONP_DB_HOST} -p ${ISUCONP_DB_PORT} -U ${ISUCONP_DB_USER} -d ${ISUCONP_DB_NAME} -v ON_ERROR_STOP=1 -f sql/bootstrap_create_table.sql"
     fi
   fi
 
