@@ -16,3 +16,8 @@ provisioning
 README-private-isu.md
 README.md
 tests
+mcp-server
+__azurite_db*__.json
+__blobstorage__/
+__queuestorage__/
+AzuriteConfig
