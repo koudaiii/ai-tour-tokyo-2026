@@ -106,6 +106,92 @@ print_application_env() {
   echo "# Container App: https://${CONTAINER_APP_NAME}.<generated-domain>"
 }
 
+print_apim_test_guide() {
+  local apim_gateway_url
+  apim_gateway_url="https://${APIM_NAME}.azure-api.net"
+
+  cat <<EOF
+
+===============================================================
+  API Management - Test & Verification Guide
+===============================================================
+
+Gateway URL: ${apim_gateway_url}
+
+# List timeline posts
+curl -s ${apim_gateway_url}/api/posts | jq .
+
+# Get a single post (id=1)
+curl -s ${apim_gateway_url}/api/posts/1 | jq .
+
+# List all users
+curl -s ${apim_gateway_url}/api/users | jq .
+
+# Get user profile
+curl -s ${apim_gateway_url}/api/users/mary | jq .
+
+# Get user's posts
+curl -s ${apim_gateway_url}/api/users/mary/posts | jq .
+
+# Health check (response time)
+curl -s -o /dev/null -w 'HTTP %{http_code} in %{time_total}s\n' ${apim_gateway_url}/api/posts
+
+# Verify OpenAPI spec is loaded (via Azure CLI)
+az apim api show --resource-group "rg-${WORKLOAD_CODE}-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}" \\
+  --service-name "${APIM_NAME}" --api-id private-isu-api -o table
+
+===============================================================
+EOF
+}
+
+print_mcp_config() {
+  local func_hostname
+  func_hostname="${FUNCTION_APP_NAME}.azurewebsites.net"
+
+  cat <<EOF
+
+===============================================================
+  Remote MCP Server - Configuration
+===============================================================
+
+Function App: ${FUNCTION_APP_NAME}
+MCP Endpoint: https://${func_hostname}/runtime/webhooks/mcp/sse
+
+# Deploy mcp-server code to Azure Functions:
+cd mcp-server && func azure functionapp publish ${FUNCTION_APP_NAME}
+
+# Claude Code MCP config (~/.claude/settings.json):
+{
+  "mcpServers": {
+    "private-isu": {
+      "type": "sse",
+      "url": "https://${func_hostname}/runtime/webhooks/mcp/sse"
+    }
+  }
+}
+
+# VS Code MCP config (.vscode/mcp.json):
+{
+  "servers": {
+    "private-isu": {
+      "type": "sse",
+      "url": "https://${func_hostname}/runtime/webhooks/mcp/sse"
+    }
+  }
+}
+
+# Available MCP tools:
+#   browse_timeline   - Browse posts with keyword filter and pagination
+#   explore_user      - User profile + stats + recent posts in one call
+#   find_popular_posts - Posts ranked by engagement (comment count)
+#   get_conversation  - Post + comment thread in readable format
+#   compare_users     - Side-by-side user activity comparison
+#   search_posts      - Keyword search across posts and comments
+
+===============================================================
+EOF
+}
+
 write_application_env_file() {
   local account_url postgres_host database_url tmp_file
   account_url="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/"
@@ -286,6 +372,7 @@ MEMCACHED_CONTAINER_IMAGE="docker.io/library/memcached:1.6"
 FUNCTION_APP_NAME=""
 FUNCTION_APP_SERVICE_PLAN_NAME=""
 FUNCTIONS_STORAGE_ACCOUNT_NAME=""
+APIM_NAME=""
 DRY_RUN=0
 RUN_STORAGE_ROLE_GRANT=1
 RUN_POSTGRES_MI_GRANT=1
@@ -470,6 +557,9 @@ validate_inputs() {
   if [[ -z "${FUNCTIONS_STORAGE_ACCOUNT_NAME}" ]]; then
     FUNCTIONS_STORAGE_ACCOUNT_NAME="$(generate_functions_storage_account_name)"
   fi
+  if [[ -z "${APIM_NAME}" ]]; then
+    APIM_NAME="apim-${WORKLOAD_CODE}-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}"
+  fi
 }
 
 main() {
@@ -551,6 +641,8 @@ main() {
     log "Running what-if (no changes applied)"
     run_az "${what_if_cmd[@]}"
     print_application_env
+    print_apim_test_guide
+    print_mcp_config
     return 0
   fi
 
@@ -580,6 +672,9 @@ main() {
   log "For local development, allow your client IP in both network firewalls before connecting:"
   log "1) Blob Storage (${STORAGE_ACCOUNT_NAME}) firewall/IP rules"
   log "2) PostgreSQL Flexible Server (${POSTGRES_SERVER_NAME}) firewall/IP rules"
+
+  print_apim_test_guide
+  print_mcp_config
 }
 
 main "$@"
