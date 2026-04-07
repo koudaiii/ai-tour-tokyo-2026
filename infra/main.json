@@ -490,6 +490,11 @@
           "supportsHttpsTrafficOnly": {
             "value": true
           },
+          "networkAcls": {
+            "value": {
+              "defaultAction": "Allow"
+            }
+          },
           "blobServices": {
             "value": {
               "containers": [

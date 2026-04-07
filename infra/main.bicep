@@ -181,6 +181,9 @@ module storageAccount 'br/public:avm/res/storage/storage-account:0.32.0' = {
     allowBlobPublicAccess: true
     minimumTlsVersion: 'TLS1_2'
     supportsHttpsTrafficOnly: true
+    networkAcls: {
+      defaultAction: 'Allow'
+    }
     blobServices: {
       containers: [
         {
