@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT_DIR}"
+
+usage() {
+  cat <<'EOF'
+Usage: script/mcp-server [options]
+
+Start the MCP server locally using Azure Functions Core Tools.
+
+Options:
+  --port PORT   Port to listen on (default: 7071)
+  -h, --help    Show this help
+EOF
+}
+
+log() {
+  echo "[mcp-server] $*"
+}
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Error: '${cmd}' is required but not installed." >&2
+    echo "Install with: brew install azure-functions-core-tools@4" >&2
+    exit 1
+  fi
+}
+
+load_env_file() {
+  local env_file="${ROOT_DIR}/.env"
+  if [[ -f "${env_file}" ]]; then
+    log "Loading environment from ${env_file}"
+    set -a
+    # shellcheck disable=SC1090
+    source "${env_file}"
+    set +a
+  fi
+}
+
+PORT="7071"
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --port)
+        PORT="${2:-}"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        echo "Error: unknown option '$1'" >&2
+        usage
+        exit 1
+        ;;
+    esac
+  done
+}
+
+main() {
+  parse_args "$@"
+  require_cmd func
+
+  load_env_file
+
+  log "Starting Azure Functions MCP server on port ${PORT}"
+  log "API_BASE_URL=${API_BASE_URL:-http://localhost:8080}"
+  log "MCP endpoint: http://localhost:${PORT}/runtime/webhooks/mcp"
+
+  cd "${ROOT_DIR}/mcp-server"
+  exec func start --port "${PORT}"
+}
+
+main "$@"

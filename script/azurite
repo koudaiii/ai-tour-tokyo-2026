@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DATA_DIR="${ROOT_DIR}/mcp-server/.azurite"
+
+usage() {
+  cat <<'EOF'
+Usage: script/azurite [options]
+
+Start the Azurite local storage emulator (required by the MCP server).
+
+Options:
+  --blob-port PORT    Blob service port (default: 10000)
+  --queue-port PORT   Queue service port (default: 10001)
+  --table-port PORT   Table service port (default: 10002)
+  -h, --help          Show this help
+EOF
+}
+
+log() {
+  echo "[azurite] $*"
+}
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Error: '${cmd}' is required but not installed." >&2
+    echo "Install with: npm install -g azurite" >&2
+    exit 1
+  fi
+}
+
+BLOB_PORT="10000"
+QUEUE_PORT="10001"
+TABLE_PORT="10002"
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --blob-port)
+        BLOB_PORT="${2:-}"
+        shift 2
+        ;;
+      --queue-port)
+        QUEUE_PORT="${2:-}"
+        shift 2
+        ;;
+      --table-port)
+        TABLE_PORT="${2:-}"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        echo "Error: unknown option '$1'" >&2
+        usage
+        exit 1
+        ;;
+    esac
+  done
+}
+
+main() {
+  parse_args "$@"
+  require_cmd azurite
+
+  mkdir -p "${DATA_DIR}"
+
+  log "Starting Azurite (data: ${DATA_DIR})"
+  log "Blob: http://127.0.0.1:${BLOB_PORT}"
+  log "Queue: http://127.0.0.1:${QUEUE_PORT}"
+  log "Table: http://127.0.0.1:${TABLE_PORT}"
+
+  exec azurite \
+    --location "${DATA_DIR}" \
+    --blobPort "${BLOB_PORT}" \
+    --queuePort "${QUEUE_PORT}" \
+    --tablePort "${TABLE_PORT}"
+}
+
+main "$@"
