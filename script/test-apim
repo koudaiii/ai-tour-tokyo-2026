@@ -107,17 +107,17 @@ run_test() {
   local curl_opts=("-s" "-o" "/dev/null" "-w" "%{http_code}")
 
   if [[ "${VERBOSE}" -eq 1 ]]; then
-    curl_opts=("-s" "-w" "\n%{http_code}")
+    curl_opts=("-s" "-v" "-w" "\n%{http_code}")
   fi
 
   log "Testing: ${method} ${path} — ${description}"
   local status_code
   if [[ "${VERBOSE}" -eq 1 ]]; then
     local body
-    body="$(curl "${curl_opts[@]}" -X "${method}" "${url}")"
+    body="$(curl "${curl_opts[@]}" -X "${method}" "${url}" 2>&1)"
     status_code="${body##*$'\n'}"
     local response="${body%$'\n'*}"
-    echo "  Response: ${response}"
+    echo "${response}"
   else
     status_code="$(curl "${curl_opts[@]}" -X "${method}" "${url}")"
   fi
@@ -139,7 +139,7 @@ run_test_with_body() {
   local curl_opts=("-s" "-o" "/dev/null" "-w" "%{http_code}")
 
   if [[ "${VERBOSE}" -eq 1 ]]; then
-    curl_opts=("-s" "-w" "\n%{http_code}")
+    curl_opts=("-s" "-v" "-w" "\n%{http_code}")
   fi
 
   log "Testing: ${method} ${path} — ${description}"
@@ -147,10 +147,10 @@ run_test_with_body() {
   if [[ "${VERBOSE}" -eq 1 ]]; then
     local body
     body="$(curl "${curl_opts[@]}" -X "${method}" "${url}" \
-      -H "Content-Type: application/json")"
+      -H "Content-Type: application/json" 2>&1)"
     status_code="${body##*$'\n'}"
     local response="${body%$'\n'*}"
-    echo "  Response: ${response}"
+    echo "${response}"
   else
     status_code="$(curl "${curl_opts[@]}" -X "${method}" "${url}" \
       -H "Content-Type: application/json")"
