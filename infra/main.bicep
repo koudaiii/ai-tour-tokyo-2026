@@ -127,6 +127,17 @@ param apimPublisherName string = 'private-isu'
 ])
 param apimSkuName string = 'Consumption'
 
+@description('Name of the Function App for the Remote MCP Server')
+param functionAppName string = 'func-${workloadCode}-mcp-${deploymentEnvironment}-${regionCode}-${substring(nowYyyymmddHhmm, 2, 10)}'
+
+@description('Name of the App Service Plan for the Function App')
+param functionAppServicePlanName string = 'asp-${workloadCode}-mcp-${deploymentEnvironment}-${regionCode}-${substring(nowYyyymmddHhmm, 2, 10)}'
+
+@description('Name of the Storage Account for Azure Functions runtime')
+@minLength(3)
+@maxLength(24)
+param functionsStorageAccountName string = 'stfn${workloadCode}${regionCode}${substring(nowYyyymmddHhmm, 2, 6)}${substring(uniqueString(subscription().subscriptionId, nowYyyymmddHhmm, 'func'), 0, 2)}'
+
 @description('Tags to apply to all resources')
 param tags object = {}
 
@@ -225,6 +236,19 @@ module containerApps 'containerapps.bicep' = {
   }
 }
 
+module functions 'functions.bicep' = {
+  name: 'functionsDeployment'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    functionAppName: functionAppName
+    appServicePlanName: functionAppServicePlanName
+    functionsStorageAccountName: functionsStorageAccountName
+    apiBaseUrl: containerApps.outputs.containerAppUrl
+  }
+}
+
 module apiManagement 'apimanagement.bicep' = {
   name: 'apiManagementDeployment'
   scope: rg
@@ -286,3 +310,12 @@ output apiManagementName string = apiManagement.outputs.apiManagementName
 
 @description('API Management gateway URL')
 output apiManagementGatewayUrl string = apiManagement.outputs.apiManagementGatewayUrl
+
+@description('Function App name (Remote MCP Server)')
+output functionAppName string = functions.outputs.functionAppName
+
+@description('Function App URL')
+output functionAppUrl string = functions.outputs.functionAppUrl
+
+@description('MCP SSE endpoint URL')
+output mcpEndpointUrl string = functions.outputs.mcpEndpointUrl

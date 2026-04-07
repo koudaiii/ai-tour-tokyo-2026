@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "2886765090955992407"
+      "templateHash": "9305093938188019830"
     },
     "description": "Deploy Azure Storage Account + Azure Database for PostgreSQL Flexible Server + Azure Container Apps for private-isu"
   },
@@ -242,6 +242,29 @@
       ],
       "metadata": {
         "description": "API Management SKU name"
+      }
+    },
+    "functionAppName": {
+      "type": "string",
+      "defaultValue": "[format('func-{0}-mcp-{1}-{2}-{3}', parameters('workloadCode'), parameters('deploymentEnvironment'), parameters('regionCode'), substring(parameters('nowYyyymmddHhmm'), 2, 10))]",
+      "metadata": {
+        "description": "Name of the Function App for the Remote MCP Server"
+      }
+    },
+    "functionAppServicePlanName": {
+      "type": "string",
+      "defaultValue": "[format('asp-{0}-mcp-{1}-{2}-{3}', parameters('workloadCode'), parameters('deploymentEnvironment'), parameters('regionCode'), substring(parameters('nowYyyymmddHhmm'), 2, 10))]",
+      "metadata": {
+        "description": "Name of the App Service Plan for the Function App"
+      }
+    },
+    "functionsStorageAccountName": {
+      "type": "string",
+      "defaultValue": "[format('stfn{0}{1}{2}{3}', parameters('workloadCode'), parameters('regionCode'), substring(parameters('nowYyyymmddHhmm'), 2, 6), substring(uniqueString(subscription().subscriptionId, parameters('nowYyyymmddHhmm'), 'func'), 0, 2))]",
+      "minLength": 3,
+      "maxLength": 24,
+      "metadata": {
+        "description": "Name of the Storage Account for Azure Functions runtime"
       }
     },
     "tags": {
@@ -11754,6 +11777,202 @@
         "storageAccount"
       ]
     },
+    "functions": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "functionsDeployment",
+      "resourceGroup": "[variables('resourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "functionAppName": {
+            "value": "[parameters('functionAppName')]"
+          },
+          "appServicePlanName": {
+            "value": "[parameters('functionAppServicePlanName')]"
+          },
+          "functionsStorageAccountName": {
+            "value": "[parameters('functionsStorageAccountName')]"
+          },
+          "apiBaseUrl": {
+            "value": "[reference('containerApps').outputs.containerAppUrl.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "10276775715935484027"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "The Azure region for resource deployment"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags to apply to resources"
+              }
+            },
+            "functionAppName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Function App"
+              }
+            },
+            "appServicePlanName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the App Service Plan for the Function App"
+              }
+            },
+            "functionsStorageAccountName": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 24,
+              "metadata": {
+                "description": "Name of the Storage Account for Azure Functions runtime"
+              }
+            },
+            "apiBaseUrl": {
+              "type": "string",
+              "metadata": {
+                "description": "Base URL of the Container App API (e.g. https://aca-xxx.azurecontainerapps.io)"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Storage/storageAccounts",
+              "apiVersion": "2025-01-01",
+              "name": "[parameters('functionsStorageAccountName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "StorageV2",
+              "sku": {
+                "name": "Standard_LRS"
+              },
+              "properties": {
+                "supportsHttpsTrafficOnly": true,
+                "minimumTlsVersion": "TLS1_2",
+                "allowBlobPublicAccess": false
+              }
+            },
+            {
+              "type": "Microsoft.Web/serverfarms",
+              "apiVersion": "2024-04-01",
+              "name": "[parameters('appServicePlanName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "functionapp",
+              "sku": {
+                "name": "Y1",
+                "tier": "Dynamic"
+              },
+              "properties": {
+                "reserved": true
+              }
+            },
+            {
+              "type": "Microsoft.Web/sites",
+              "apiVersion": "2024-04-01",
+              "name": "[parameters('functionAppName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "functionapp,linux",
+              "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]",
+                "httpsOnly": true,
+                "siteConfig": {
+                  "linuxFxVersion": "Python|3.11",
+                  "appSettings": [
+                    {
+                      "name": "AzureWebJobsStorage",
+                      "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', parameters('functionsStorageAccountName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('functionsStorageAccountName')), '2025-01-01').keys[0].value)]"
+                    },
+                    {
+                      "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
+                      "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', parameters('functionsStorageAccountName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('functionsStorageAccountName')), '2025-01-01').keys[0].value)]"
+                    },
+                    {
+                      "name": "WEBSITE_CONTENTSHARE",
+                      "value": "[toLower(parameters('functionAppName'))]"
+                    },
+                    {
+                      "name": "FUNCTIONS_EXTENSION_VERSION",
+                      "value": "~4"
+                    },
+                    {
+                      "name": "FUNCTIONS_WORKER_RUNTIME",
+                      "value": "python"
+                    },
+                    {
+                      "name": "API_BASE_URL",
+                      "value": "[parameters('apiBaseUrl')]"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('functionsStorageAccountName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "functionAppName": {
+              "type": "string",
+              "metadata": {
+                "description": "Function App name"
+              },
+              "value": "[parameters('functionAppName')]"
+            },
+            "functionAppHostname": {
+              "type": "string",
+              "metadata": {
+                "description": "Function App default hostname"
+              },
+              "value": "[reference(resourceId('Microsoft.Web/sites', parameters('functionAppName')), '2024-04-01').defaultHostName]"
+            },
+            "functionAppUrl": {
+              "type": "string",
+              "metadata": {
+                "description": "Function App URL"
+              },
+              "value": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', parameters('functionAppName')), '2024-04-01').defaultHostName)]"
+            },
+            "mcpEndpointUrl": {
+              "type": "string",
+              "metadata": {
+                "description": "MCP SSE endpoint URL"
+              },
+              "value": "[format('https://{0}/runtime/webhooks/mcp/sse', reference(resourceId('Microsoft.Web/sites', parameters('functionAppName')), '2024-04-01').defaultHostName)]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "containerApps",
+        "rg"
+      ]
+    },
     "apiManagement": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
@@ -12051,6 +12270,27 @@
         "description": "API Management gateway URL"
       },
       "value": "[reference('apiManagement').outputs.apiManagementGatewayUrl.value]"
+    },
+    "functionAppName": {
+      "type": "string",
+      "metadata": {
+        "description": "Function App name (Remote MCP Server)"
+      },
+      "value": "[reference('functions').outputs.functionAppName.value]"
+    },
+    "functionAppUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "Function App URL"
+      },
+      "value": "[reference('functions').outputs.functionAppUrl.value]"
+    },
+    "mcpEndpointUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "MCP SSE endpoint URL"
+      },
+      "value": "[reference('functions').outputs.mcpEndpointUrl.value]"
     }
   }
 }

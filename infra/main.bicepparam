@@ -25,6 +25,9 @@ param apiManagementName = 'apim-${workloadCode}-${deploymentEnvironment}-${regio
 param apimPublisherEmail = readEnvironmentVariable('APIM_PUBLISHER_EMAIL', 'admin@example.com')
 param apimPublisherName = 'private-isu'
 param apimSkuName = 'Consumption'
+param functionAppName = 'func-${workloadCode}-mcp-${deploymentEnvironment}-${regionCode}-${substring(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000'), 2, 10)}'
+param functionAppServicePlanName = 'asp-${workloadCode}-mcp-${deploymentEnvironment}-${regionCode}-${substring(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000'), 2, 10)}'
+param functionsStorageAccountName = 'stfn${workloadCode}${regionCode}${substring(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000'), 2, 6)}${substring(uniqueString(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000'), 'func'), 0, 2)}'
 param tags = {
   project: 'private-isu'
   environment: 'dev'

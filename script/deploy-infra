@@ -83,6 +83,9 @@ log_resolved_parameters() {
   log "VIRTUAL_NETWORK_NAME=${VIRTUAL_NETWORK_NAME}"
   log "APP_CONTAINER_IMAGE=${APP_CONTAINER_IMAGE}"
   log "MEMCACHED_CONTAINER_IMAGE=${MEMCACHED_CONTAINER_IMAGE}"
+  log "FUNCTION_APP_NAME=${FUNCTION_APP_NAME}"
+  log "FUNCTION_APP_SERVICE_PLAN_NAME=${FUNCTION_APP_SERVICE_PLAN_NAME}"
+  log "FUNCTIONS_STORAGE_ACCOUNT_NAME=${FUNCTIONS_STORAGE_ACCOUNT_NAME}"
   log "POSTGRES_ADMIN_PASSWORD=***"
   log "TAGS_JSON=${TAGS_JSON}"
 }
@@ -101,6 +104,92 @@ print_application_env() {
   echo "ISUCONP_DB_NAME=${POSTGRES_DB_NAME}"
   echo "CONTAINER_APP_NAME=${CONTAINER_APP_NAME}"
   echo "# Container App: https://${CONTAINER_APP_NAME}.<generated-domain>"
+}
+
+print_apim_test_guide() {
+  local apim_gateway_url
+  apim_gateway_url="https://${APIM_NAME}.azure-api.net"
+
+  cat <<EOF
+
+===============================================================
+  API Management - Test & Verification Guide
+===============================================================
+
+Gateway URL: ${apim_gateway_url}
+
+# List timeline posts
+curl -s ${apim_gateway_url}/api/posts | jq .
+
+# Get a single post (id=1)
+curl -s ${apim_gateway_url}/api/posts/1 | jq .
+
+# List all users
+curl -s ${apim_gateway_url}/api/users | jq .
+
+# Get user profile
+curl -s ${apim_gateway_url}/api/users/mary | jq .
+
+# Get user's posts
+curl -s ${apim_gateway_url}/api/users/mary/posts | jq .
+
+# Health check (response time)
+curl -s -o /dev/null -w 'HTTP %{http_code} in %{time_total}s\n' ${apim_gateway_url}/api/posts
+
+# Verify OpenAPI spec is loaded (via Azure CLI)
+az apim api show --resource-group "rg-${WORKLOAD_CODE}-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}" \\
+  --service-name "${APIM_NAME}" --api-id private-isu-api -o table
+
+===============================================================
+EOF
+}
+
+print_mcp_config() {
+  local func_hostname
+  func_hostname="${FUNCTION_APP_NAME}.azurewebsites.net"
+
+  cat <<EOF
+
+===============================================================
+  Remote MCP Server - Configuration
+===============================================================
+
+Function App: ${FUNCTION_APP_NAME}
+MCP Endpoint: https://${func_hostname}/runtime/webhooks/mcp/sse
+
+# Deploy mcp-server code to Azure Functions:
+cd mcp-server && func azure functionapp publish ${FUNCTION_APP_NAME}
+
+# Claude Code MCP config (~/.claude/settings.json):
+{
+  "mcpServers": {
+    "private-isu": {
+      "type": "sse",
+      "url": "https://${func_hostname}/runtime/webhooks/mcp/sse"
+    }
+  }
+}
+
+# VS Code MCP config (.vscode/mcp.json):
+{
+  "servers": {
+    "private-isu": {
+      "type": "sse",
+      "url": "https://${func_hostname}/runtime/webhooks/mcp/sse"
+    }
+  }
+}
+
+# Available MCP tools:
+#   browse_timeline   - Browse posts with keyword filter and pagination
+#   explore_user      - User profile + stats + recent posts in one call
+#   find_popular_posts - Posts ranked by engagement (comment count)
+#   get_conversation  - Post + comment thread in readable format
+#   compare_users     - Side-by-side user activity comparison
+#   search_posts      - Keyword search across posts and comments
+
+===============================================================
+EOF
 }
 
 write_application_env_file() {
@@ -178,6 +267,20 @@ generate_container_app_name() {
 
 generate_virtual_network_name() {
   echo "vnet-${WORKLOAD_CODE}-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}" | cut -c1-64
+}
+
+generate_function_app_name() {
+  echo "func-${WORKLOAD_CODE}-mcp-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}" | cut -c1-60
+}
+
+generate_function_app_service_plan_name() {
+  echo "asp-${WORKLOAD_CODE}-mcp-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}" | cut -c1-40
+}
+
+generate_functions_storage_account_name() {
+  local rand
+  rand="$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom | head -c 2)"
+  echo "stfn${WORKLOAD_CODE}${REGION_CODE}${DATE_YYMMDD:0:6}${rand}" | cut -c1-24
 }
 
 resolve_region_code() {
@@ -266,6 +369,10 @@ CONTAINER_APP_NAME=""
 VIRTUAL_NETWORK_NAME=""
 APP_CONTAINER_IMAGE="docker.io/koudaiii/ai-tour-for-partner-2026-track4-session1:latest"
 MEMCACHED_CONTAINER_IMAGE="docker.io/library/memcached:1.6"
+FUNCTION_APP_NAME=""
+FUNCTION_APP_SERVICE_PLAN_NAME=""
+FUNCTIONS_STORAGE_ACCOUNT_NAME=""
+APIM_NAME=""
 DRY_RUN=0
 RUN_STORAGE_ROLE_GRANT=1
 RUN_POSTGRES_MI_GRANT=1
@@ -440,6 +547,19 @@ validate_inputs() {
     echo "Error: --postgres-entra-admin-type must be one of: User, Group, ServicePrincipal." >&2
     exit 1
   fi
+
+  if [[ -z "${FUNCTION_APP_NAME}" ]]; then
+    FUNCTION_APP_NAME="$(generate_function_app_name)"
+  fi
+  if [[ -z "${FUNCTION_APP_SERVICE_PLAN_NAME}" ]]; then
+    FUNCTION_APP_SERVICE_PLAN_NAME="$(generate_function_app_service_plan_name)"
+  fi
+  if [[ -z "${FUNCTIONS_STORAGE_ACCOUNT_NAME}" ]]; then
+    FUNCTIONS_STORAGE_ACCOUNT_NAME="$(generate_functions_storage_account_name)"
+  fi
+  if [[ -z "${APIM_NAME}" ]]; then
+    APIM_NAME="apim-${WORKLOAD_CODE}-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}"
+  fi
 }
 
 main() {
@@ -476,6 +596,9 @@ main() {
     "virtualNetworkName=${VIRTUAL_NETWORK_NAME}"
     "appContainerImage=${APP_CONTAINER_IMAGE}"
     "memcachedContainerImage=${MEMCACHED_CONTAINER_IMAGE}"
+    "functionAppName=${FUNCTION_APP_NAME}"
+    "functionAppServicePlanName=${FUNCTION_APP_SERVICE_PLAN_NAME}"
+    "functionsStorageAccountName=${FUNCTIONS_STORAGE_ACCOUNT_NAME}"
     "tags=${TAGS_JSON}"
   )
 
@@ -510,11 +633,16 @@ main() {
       "virtualNetworkName=${VIRTUAL_NETWORK_NAME}"
       "appContainerImage=${APP_CONTAINER_IMAGE}"
       "memcachedContainerImage=${MEMCACHED_CONTAINER_IMAGE}"
+      "functionAppName=${FUNCTION_APP_NAME}"
+      "functionAppServicePlanName=${FUNCTION_APP_SERVICE_PLAN_NAME}"
+      "functionsStorageAccountName=${FUNCTIONS_STORAGE_ACCOUNT_NAME}"
       "tags=${TAGS_JSON}"
     )
     log "Running what-if (no changes applied)"
     run_az "${what_if_cmd[@]}"
     print_application_env
+    print_apim_test_guide
+    print_mcp_config
     return 0
   fi
 
@@ -544,6 +672,9 @@ main() {
   log "For local development, allow your client IP in both network firewalls before connecting:"
   log "1) Blob Storage (${STORAGE_ACCOUNT_NAME}) firewall/IP rules"
   log "2) PostgreSQL Flexible Server (${POSTGRES_SERVER_NAME}) firewall/IP rules"
+
+  print_apim_test_guide
+  print_mcp_config
 }
 
 main "$@"
