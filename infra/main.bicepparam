@@ -21,6 +21,10 @@ param containerAppsEnvironmentName = 'acae-${workloadCode}-${deploymentEnvironme
 param containerAppName = 'aca-${workloadCode}-${deploymentEnvironment}-${regionCode}-${substring(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000'), 2, 10)}'
 param appContainerImage = readEnvironmentVariable('APP_CONTAINER_IMAGE', 'docker.io/koudaiii/ai-tour-for-partner-2026-track4-session1:latest')
 param memcachedContainerImage = 'docker.io/library/memcached:1.6'
+param apiManagementName = 'apim-${workloadCode}-${deploymentEnvironment}-${regionCode}-${substring(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000'), 2, 10)}'
+param apimPublisherEmail = readEnvironmentVariable('APIM_PUBLISHER_EMAIL', 'admin@example.com')
+param apimPublisherName = 'private-isu'
+param apimSkuName = 'Consumption'
 param tags = {
   project: 'private-isu'
   environment: 'dev'

@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "14959223086895736159"
+      "templateHash": "2886765090955992407"
     },
     "description": "Deploy Azure Storage Account + Azure Database for PostgreSQL Flexible Server + Azure Container Apps for private-isu"
   },
@@ -24,8 +24,34 @@
         "description": "Date suffix for resource group name (YYYYMMDDHHmm format)"
       }
     },
+    "workloadCode": {
+      "type": "string",
+      "defaultValue": "pisu",
+      "minLength": 2,
+      "maxLength": 4,
+      "metadata": {
+        "description": "Workload code used in resource names"
+      }
+    },
+    "deploymentEnvironment": {
+      "type": "string",
+      "defaultValue": "sandbox",
+      "metadata": {
+        "description": "Deployment environment used in resource names"
+      }
+    },
+    "regionCode": {
+      "type": "string",
+      "defaultValue": "jpe",
+      "minLength": 2,
+      "maxLength": 4,
+      "metadata": {
+        "description": "Region code used in resource names"
+      }
+    },
     "storageAccountName": {
       "type": "string",
+      "defaultValue": "[format('st{0}sbx{1}{2}{3}', parameters('workloadCode'), parameters('regionCode'), substring(parameters('nowYyyymmddHhmm'), 2, 6), substring(uniqueString(subscription().subscriptionId, parameters('nowYyyymmddHhmm')), 0, 2))]",
       "minLength": 3,
       "maxLength": 24,
       "metadata": {
@@ -41,6 +67,7 @@
     },
     "postgresServerName": {
       "type": "string",
+      "defaultValue": "[format('pgfs-{0}-{1}-{2}-{3}', parameters('workloadCode'), parameters('deploymentEnvironment'), parameters('regionCode'), parameters('nowYyyymmddHhmm'))]",
       "minLength": 3,
       "maxLength": 63,
       "metadata": {
@@ -129,21 +156,21 @@
     },
     "containerAppsEnvironmentName": {
       "type": "string",
-      "defaultValue": "[format('privateisu-acaenv-{0}', parameters('nowYyyymmddHhmm'))]",
+      "defaultValue": "[format('acae-{0}-{1}-{2}-{3}', parameters('workloadCode'), parameters('deploymentEnvironment'), parameters('regionCode'), substring(parameters('nowYyyymmddHhmm'), 2, 10))]",
       "metadata": {
         "description": "Container Apps managed environment name"
       }
     },
     "containerAppName": {
       "type": "string",
-      "defaultValue": "[format('privateisu-app-{0}', parameters('nowYyyymmddHhmm'))]",
+      "defaultValue": "[format('aca-{0}-{1}-{2}-{3}', parameters('workloadCode'), parameters('deploymentEnvironment'), parameters('regionCode'), substring(parameters('nowYyyymmddHhmm'), 2, 10))]",
       "metadata": {
         "description": "Container App name"
       }
     },
     "virtualNetworkName": {
       "type": "string",
-      "defaultValue": "[format('privateisu-vnet-{0}', parameters('nowYyyymmddHhmm'))]",
+      "defaultValue": "[format('vnet-{0}-{1}-{2}-{3}', parameters('workloadCode'), parameters('deploymentEnvironment'), parameters('regionCode'), substring(parameters('nowYyyymmddHhmm'), 2, 10))]",
       "metadata": {
         "description": "Virtual network name for private connectivity"
       }
@@ -183,6 +210,40 @@
         "description": "Memcached sidecar container image"
       }
     },
+    "apiManagementName": {
+      "type": "string",
+      "defaultValue": "[format('apim-{0}-{1}-{2}-{3}', parameters('workloadCode'), parameters('deploymentEnvironment'), parameters('regionCode'), substring(parameters('nowYyyymmddHhmm'), 2, 10))]",
+      "metadata": {
+        "description": "API Management service name"
+      }
+    },
+    "apimPublisherEmail": {
+      "type": "string",
+      "metadata": {
+        "description": "Publisher email address for API Management"
+      }
+    },
+    "apimPublisherName": {
+      "type": "string",
+      "defaultValue": "private-isu",
+      "metadata": {
+        "description": "Publisher name for API Management"
+      }
+    },
+    "apimSkuName": {
+      "type": "string",
+      "defaultValue": "Consumption",
+      "allowedValues": [
+        "Consumption",
+        "Developer",
+        "Basic",
+        "Standard",
+        "Premium"
+      ],
+      "metadata": {
+        "description": "API Management SKU name"
+      }
+    },
     "tags": {
       "type": "object",
       "defaultValue": {},
@@ -192,7 +253,7 @@
     }
   },
   "variables": {
-    "resourceGroupName": "[format('rg-private-isu-{0}', parameters('nowYyyymmddHhmm'))]"
+    "resourceGroupName": "[format('rg-{0}-{1}-{2}-{3}', parameters('workloadCode'), parameters('deploymentEnvironment'), parameters('regionCode'), substring(parameters('nowYyyymmddHhmm'), 2, 10))]"
   },
   "resources": {
     "rg": {
@@ -239,7 +300,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "12637881138169340799"
+              "templateHash": "311804865726027998"
             }
           },
           "parameters": {
@@ -293,31 +354,31 @@
                   "addressPrefixes": [
                     "[parameters('virtualNetworkAddressPrefix')]"
                   ]
-                }
+                },
+                "subnets": [
+                  {
+                    "name": "aca-infra",
+                    "properties": {
+                      "addressPrefix": "[parameters('containerAppsInfrastructureSubnetPrefix')]",
+                      "delegations": [
+                        {
+                          "name": "aca-infra-delegation",
+                          "properties": {
+                            "serviceName": "Microsoft.App/environments"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "postgres-pe",
+                    "properties": {
+                      "addressPrefix": "[parameters('postgresPrivateEndpointSubnetPrefix')]",
+                      "privateEndpointNetworkPolicies": "Disabled"
+                    }
+                  }
+                ]
               }
-            },
-            {
-              "type": "Microsoft.Network/virtualNetworks/subnets",
-              "apiVersion": "2024-05-01",
-              "name": "[format('{0}/{1}', parameters('virtualNetworkName'), 'aca-infra')]",
-              "properties": {
-                "addressPrefix": "[parameters('containerAppsInfrastructureSubnetPrefix')]"
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]"
-              ]
-            },
-            {
-              "type": "Microsoft.Network/virtualNetworks/subnets",
-              "apiVersion": "2024-05-01",
-              "name": "[format('{0}/{1}', parameters('virtualNetworkName'), 'postgres-pe')]",
-              "properties": {
-                "addressPrefix": "[parameters('postgresPrivateEndpointSubnetPrefix')]",
-                "privateEndpointNetworkPolicies": "Disabled"
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]"
-              ]
             },
             {
               "type": "Microsoft.Network/privateDnsZones",
@@ -8595,7 +8656,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "13175140681626935606"
+              "templateHash": "15476015812180917888"
             }
           },
           "parameters": {
@@ -8788,15 +8849,6 @@
                   },
                   "publicNetworkAccess": {
                     "value": "Enabled"
-                  },
-                  "firewallRules": {
-                    "value": [
-                      {
-                        "name": "AllowAllWindowsAzureIps",
-                        "startIpAddress": "0.0.0.0",
-                        "endIpAddress": "0.0.0.0"
-                      }
-                    ]
                   },
                   "privateEndpoints": {
                     "value": [
@@ -11696,6 +11748,197 @@
         "rg",
         "storageAccount"
       ]
+    },
+    "apiManagement": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "apiManagementDeployment",
+      "resourceGroup": "[variables('resourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "apiManagementName": {
+            "value": "[parameters('apiManagementName')]"
+          },
+          "publisherEmail": {
+            "value": "[parameters('apimPublisherEmail')]"
+          },
+          "publisherName": {
+            "value": "[parameters('apimPublisherName')]"
+          },
+          "skuName": {
+            "value": "[parameters('apimSkuName')]"
+          },
+          "containerAppUrl": {
+            "value": "[reference('containerApps').outputs.containerAppUrl.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "8909825863860644804"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "The Azure region for API Management resource deployment"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags to apply to API Management resources"
+              }
+            },
+            "apiManagementName": {
+              "type": "string",
+              "metadata": {
+                "description": "API Management service name"
+              }
+            },
+            "publisherEmail": {
+              "type": "string",
+              "metadata": {
+                "description": "Publisher email address for API Management"
+              }
+            },
+            "publisherName": {
+              "type": "string",
+              "metadata": {
+                "description": "Publisher name for API Management"
+              }
+            },
+            "skuName": {
+              "type": "string",
+              "defaultValue": "Consumption",
+              "allowedValues": [
+                "Consumption",
+                "Developer",
+                "Basic",
+                "Standard",
+                "Premium"
+              ],
+              "metadata": {
+                "description": "API Management SKU name"
+              }
+            },
+            "containerAppUrl": {
+              "type": "string",
+              "metadata": {
+                "description": "Backend URL of the Container App"
+              }
+            }
+          },
+          "variables": {
+            "$fxv#0": "openapi: 3.0.3\ninfo:\n  title: Private ISU API\n  description: REST JSON API for the Private ISU social media application.\n  version: \"1.0.0\"\nservers:\n  - url: http://localhost:8080\npaths:\n  /api/posts:\n    get:\n      operationId: getPosts\n      summary: List timeline posts\n      parameters:\n        - name: max_created_at\n          in: query\n          required: false\n          description: ISO 8601 datetime for pagination (returns posts created at or before this time)\n          schema:\n            type: string\n            format: date-time\n      responses:\n        \"200\":\n          description: A list of posts\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  posts:\n                    type: array\n                    items:\n                      $ref: \"#/components/schemas/Post\"\n    post:\n      operationId: createPost\n      summary: Create a new post with an image\n      requestBody:\n        required: true\n        content:\n          multipart/form-data:\n            schema:\n              type: object\n              required:\n                - file\n                - csrf_token\n              properties:\n                file:\n                  type: string\n                  format: binary\n                  description: Image file (JPEG, PNG, or GIF)\n                body:\n                  type: string\n                  description: Post body text\n                csrf_token:\n                  type: string\n      responses:\n        \"201\":\n          description: Post created\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  id:\n                    type: integer\n        \"400\":\n          $ref: \"#/components/responses/BadRequest\"\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"422\":\n          $ref: \"#/components/responses/InvalidCsrf\"\n\n  /api/posts/{id}:\n    get:\n      operationId: getPost\n      summary: Get a single post with all comments\n      parameters:\n        - $ref: \"#/components/parameters/PostId\"\n      responses:\n        \"200\":\n          description: Post detail\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  post:\n                    $ref: \"#/components/schemas/Post\"\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n\n  /api/comments:\n    post:\n      operationId: createComment\n      summary: Add a comment to a post\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              type: object\n              required:\n                - post_id\n                - comment\n                - csrf_token\n              properties:\n                post_id:\n                  type: integer\n                comment:\n                  type: string\n                csrf_token:\n                  type: string\n      responses:\n        \"201\":\n          description: Comment created\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  post_id:\n                    type: integer\n        \"400\":\n          $ref: \"#/components/responses/BadRequest\"\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"422\":\n          $ref: \"#/components/responses/InvalidCsrf\"\n\n  /api/users:\n    get:\n      operationId: getUsers\n      summary: List all active users\n      responses:\n        \"200\":\n          description: A list of users\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  users:\n                    type: array\n                    items:\n                      $ref: \"#/components/schemas/UserSummary\"\n\n  /api/users/{account_name}:\n    get:\n      operationId: getUser\n      summary: Get user profile with stats\n      parameters:\n        - $ref: \"#/components/parameters/AccountName\"\n      responses:\n        \"200\":\n          description: User profile\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  user:\n                    $ref: \"#/components/schemas/UserSummary\"\n                  post_count:\n                    type: integer\n                  comment_count:\n                    type: integer\n                    description: Number of comments the user has written\n                  commented_count:\n                    type: integer\n                    description: Number of comments on the user's posts\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n\n  /api/users/{account_name}/posts:\n    get:\n      operationId: getUserPosts\n      summary: List posts by a specific user\n      parameters:\n        - $ref: \"#/components/parameters/AccountName\"\n      responses:\n        \"200\":\n          description: A list of the user's posts\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  posts:\n                    type: array\n                    items:\n                      $ref: \"#/components/schemas/Post\"\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n\n  /api/users/{account_name}/posts/{id}:\n    get:\n      operationId: getUserPost\n      summary: Get a specific post by a user with all comments\n      parameters:\n        - $ref: \"#/components/parameters/AccountName\"\n        - $ref: \"#/components/parameters/PostId\"\n      responses:\n        \"200\":\n          description: Post detail\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  post:\n                    $ref: \"#/components/schemas/Post\"\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n\ncomponents:\n  parameters:\n    AccountName:\n      name: account_name\n      in: path\n      required: true\n      schema:\n        type: string\n    PostId:\n      name: id\n      in: path\n      required: true\n      schema:\n        type: integer\n\n  schemas:\n    UserSummary:\n      type: object\n      properties:\n        id:\n          type: integer\n        account_name:\n          type: string\n        created_at:\n          type: string\n          format: date-time\n\n    Comment:\n      type: object\n      properties:\n        id:\n          type: integer\n        comment:\n          type: string\n        user:\n          $ref: \"#/components/schemas/UserSummary\"\n        created_at:\n          type: string\n          format: date-time\n\n    Post:\n      type: object\n      properties:\n        id:\n          type: integer\n        user:\n          $ref: \"#/components/schemas/UserSummary\"\n        body:\n          type: string\n        mime:\n          type: string\n        image_url:\n          type: string\n        created_at:\n          type: string\n          format: date-time\n        comment_count:\n          type: integer\n        comments:\n          type: array\n          items:\n            $ref: \"#/components/schemas/Comment\"\n\n    Error:\n      type: object\n      properties:\n        error:\n          type: string\n\n  responses:\n    NotFound:\n      description: Resource not found\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n    BadRequest:\n      description: Bad request\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n    Unauthorized:\n      description: Authentication required\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n    InvalidCsrf:\n      description: Invalid CSRF token\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ApiManagement/service",
+              "apiVersion": "2024-06-01-preview",
+              "name": "[parameters('apiManagementName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "[parameters('skuName')]",
+                "capacity": "[if(equals(parameters('skuName'), 'Consumption'), 0, 1)]"
+              },
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "publisherEmail": "[parameters('publisherEmail')]",
+                "publisherName": "[parameters('publisherName')]"
+              }
+            },
+            {
+              "type": "Microsoft.ApiManagement/service/apis",
+              "apiVersion": "2024-06-01-preview",
+              "name": "[format('{0}/{1}', parameters('apiManagementName'), 'private-isu-api')]",
+              "properties": {
+                "displayName": "Private ISU API",
+                "description": "REST JSON API for the Private ISU social media application",
+                "path": "",
+                "protocols": [
+                  "https"
+                ],
+                "subscriptionRequired": false,
+                "serviceUrl": "[parameters('containerAppUrl')]",
+                "format": "openapi",
+                "value": "[variables('$fxv#0')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service', parameters('apiManagementName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.ApiManagement/service/backends",
+              "apiVersion": "2024-06-01-preview",
+              "name": "[format('{0}/{1}', parameters('apiManagementName'), 'container-app')]",
+              "properties": {
+                "title": "Container App Backend",
+                "description": "private-isu Container App",
+                "protocol": "http",
+                "url": "[parameters('containerAppUrl')]",
+                "tls": {
+                  "validateCertificateChain": true,
+                  "validateCertificateName": true
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service', parameters('apiManagementName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.ApiManagement/service/apis/policies",
+              "apiVersion": "2024-06-01-preview",
+              "name": "[format('{0}/{1}/{2}', parameters('apiManagementName'), 'private-isu-api', 'policy')]",
+              "properties": {
+                "format": "xml",
+                "value": "[format('<policies><inbound><base /><set-backend-service backend-id=\"{0}\" /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>', 'container-app')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apiManagementName'), 'private-isu-api')]",
+                "[resourceId('Microsoft.ApiManagement/service/backends', parameters('apiManagementName'), 'container-app')]"
+              ]
+            }
+          ],
+          "outputs": {
+            "apiManagementName": {
+              "type": "string",
+              "value": "[parameters('apiManagementName')]"
+            },
+            "apiManagementGatewayUrl": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ApiManagement/service', parameters('apiManagementName')), '2024-06-01-preview').gatewayUrl]"
+            },
+            "apiManagementPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ApiManagement/service', parameters('apiManagementName')), '2024-06-01-preview', 'full').identity.principalId]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "containerApps",
+        "rg"
+      ]
     }
   },
   "outputs": {
@@ -11789,6 +12032,20 @@
         "description": "Container Apps managed environment name"
       },
       "value": "[reference('containerApps').outputs.managedEnvironmentName.value]"
+    },
+    "apiManagementName": {
+      "type": "string",
+      "metadata": {
+        "description": "API Management service name"
+      },
+      "value": "[reference('apiManagement').outputs.apiManagementName.value]"
+    },
+    "apiManagementGatewayUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "API Management gateway URL"
+      },
+      "value": "[reference('apiManagement').outputs.apiManagementGatewayUrl.value]"
     }
   }
 }

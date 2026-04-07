@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="${ROOT_DIR}/.env"
+
+usage() {
+  cat <<'EOF'
+Usage: script/test-apim [options]
+
+Test API Management endpoints with curl.
+
+Options:
+  --gateway-url URL   API Management gateway URL (default: inferred from Azure deployment)
+  --resource-group RG Resource group name (required when inferring gateway URL)
+  --apim-name NAME    API Management service name (required when inferring gateway URL)
+  --verbose           Show full curl output with headers (-v)
+  -h, --help          Show this help
+EOF
+}
+
+log() {
+  echo "[test-apim] $*"
+}
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Error: '${cmd}' is required but not installed." >&2
+    exit 1
+  fi
+}
+
+load_env_file() {
+  if [[ -f "${ENV_FILE}" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "${ENV_FILE}"
+    set +a
+  fi
+}
+
+GATEWAY_URL=""
+RESOURCE_GROUP=""
+APIM_NAME=""
+VERBOSE=0
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --gateway-url)
+        GATEWAY_URL="${2:-}"
+        shift 2
+        ;;
+      --resource-group)
+        RESOURCE_GROUP="${2:-}"
+        shift 2
+        ;;
+      --apim-name)
+        APIM_NAME="${2:-}"
+        shift 2
+        ;;
+      --verbose)
+        VERBOSE=1
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        echo "Error: unknown option '$1'" >&2
+        usage
+        exit 1
+        ;;
+    esac
+  done
+}
+
+resolve_gateway_url() {
+  if [[ -n "${GATEWAY_URL}" ]]; then
+    return 0
+  fi
+
+  if [[ -z "${RESOURCE_GROUP}" || -z "${APIM_NAME}" ]]; then
+    echo "Error: --gateway-url is required, or provide both --resource-group and --apim-name to infer it." >&2
+    exit 1
+  fi
+
+  log "Resolving gateway URL from Azure (resource-group=${RESOURCE_GROUP}, apim=${APIM_NAME})"
+  GATEWAY_URL="$(az apim show \
+    --name "${APIM_NAME}" \
+    --resource-group "${RESOURCE_GROUP}" \
+    --query gatewayUrl -o tsv 2>/dev/null)"
+
+  if [[ -z "${GATEWAY_URL}" ]]; then
+    echo "Error: failed to resolve gateway URL. Check --resource-group and --apim-name." >&2
+    exit 1
+  fi
+}
+
+run_test() {
+  local method="$1"
+  local path="$2"
+  local description="$3"
+  local url="${GATEWAY_URL%/}${path}"
+  local curl_opts=("-s" "-o" "/dev/null" "-w" "%{http_code}")
+
+  if [[ "${VERBOSE}" -eq 1 ]]; then
+    curl_opts=("-s" "-v" "-w" "\n%{http_code}")
+  fi
+
+  log "Testing: ${method} ${path} — ${description}"
+  local status_code
+  if [[ "${VERBOSE}" -eq 1 ]]; then
+    local body
+    body="$(curl "${curl_opts[@]}" -X "${method}" "${url}" 2>&1)"
+    status_code="${body##*$'\n'}"
+    local response="${body%$'\n'*}"
+    echo "${response}"
+  else
+    status_code="$(curl "${curl_opts[@]}" -X "${method}" "${url}")"
+  fi
+
+  if [[ "${status_code}" =~ ^2 ]]; then
+    echo "  ✅ ${status_code} OK"
+  elif [[ "${status_code}" =~ ^4 ]]; then
+    echo "  ⚠️  ${status_code} Client Error"
+  else
+    echo "  ❌ ${status_code} Error"
+  fi
+}
+
+run_test_with_body() {
+  local method="$1"
+  local path="$2"
+  local description="$3"
+  local url="${GATEWAY_URL%/}${path}"
+  local curl_opts=("-s" "-o" "/dev/null" "-w" "%{http_code}")
+
+  if [[ "${VERBOSE}" -eq 1 ]]; then
+    curl_opts=("-s" "-v" "-w" "\n%{http_code}")
+  fi
+
+  log "Testing: ${method} ${path} — ${description}"
+  local status_code
+  if [[ "${VERBOSE}" -eq 1 ]]; then
+    local body
+    body="$(curl "${curl_opts[@]}" -X "${method}" "${url}" \
+      -H "Content-Type: application/json" 2>&1)"
+    status_code="${body##*$'\n'}"
+    local response="${body%$'\n'*}"
+    echo "${response}"
+  else
+    status_code="$(curl "${curl_opts[@]}" -X "${method}" "${url}" \
+      -H "Content-Type: application/json")"
+  fi
+
+  if [[ "${status_code}" =~ ^2 ]]; then
+    echo "  ✅ ${status_code} OK"
+  elif [[ "${status_code}" =~ ^4 ]]; then
+    echo "  ⚠️  ${status_code} Client Error (expected without app login session)"
+  else
+    echo "  ❌ ${status_code} Error"
+  fi
+}
+
+main() {
+  parse_args "$@"
+  require_cmd curl
+  load_env_file
+  resolve_gateway_url
+
+  # Strip trailing slash
+  GATEWAY_URL="${GATEWAY_URL%/}"
+
+  log "Gateway URL: ${GATEWAY_URL}"
+  echo ""
+  echo "=== API Management Endpoint Tests ==="
+  echo ""
+
+  # GET endpoints (no auth required)
+  run_test "GET" "/api/posts" "List timeline posts"
+  run_test "GET" "/api/posts/1" "Get a single post"
+  run_test "GET" "/api/users" "List all active users"
+  run_test "GET" "/api/users/mary/posts" "List posts by user"
+
+  echo ""
+  echo "=== POST endpoints (require app login session) ==="
+  echo ""
+
+  # POST endpoints (expected to return 401/422 without app login)
+  run_test_with_body "POST" "/api/posts" "Create post (not logged in)"
+  run_test_with_body "POST" "/api/comments" "Create comment (not logged in)"
+
+  echo ""
+  log "Tests completed"
+}
+
+main "$@"

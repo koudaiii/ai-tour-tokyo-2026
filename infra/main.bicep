@@ -108,6 +108,25 @@ param appContainerImage string = 'docker.io/koudaiii/ai-tour-for-partner-2026-tr
 @description('Memcached sidecar container image')
 param memcachedContainerImage string = 'docker.io/library/memcached:1.6'
 
+@description('API Management service name')
+param apiManagementName string = 'apim-${workloadCode}-${deploymentEnvironment}-${regionCode}-${substring(nowYyyymmddHhmm, 2, 10)}'
+
+@description('Publisher email address for API Management')
+param apimPublisherEmail string
+
+@description('Publisher name for API Management')
+param apimPublisherName string = 'private-isu'
+
+@description('API Management SKU name')
+@allowed([
+  'Consumption'
+  'Developer'
+  'Basic'
+  'Standard'
+  'Premium'
+])
+param apimSkuName string = 'Consumption'
+
 @description('Tags to apply to all resources')
 param tags object = {}
 
@@ -203,6 +222,20 @@ module containerApps 'containerapps.bicep' = {
   }
 }
 
+module apiManagement 'apimanagement.bicep' = {
+  name: 'apiManagementDeployment'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    apiManagementName: apiManagementName
+    publisherEmail: apimPublisherEmail
+    publisherName: apimPublisherName
+    skuName: apimSkuName
+    containerAppUrl: containerApps.outputs.containerAppUrl
+  }
+}
+
 ////////////
 // Outputs
 ////////////
@@ -244,3 +277,9 @@ output containerAppUrl string = containerApps.outputs.containerAppUrl
 
 @description('Container Apps managed environment name')
 output containerAppsEnvironmentName string = containerApps.outputs.managedEnvironmentName
+
+@description('API Management service name')
+output apiManagementName string = apiManagement.outputs.apiManagementName
+
+@description('API Management gateway URL')
+output apiManagementGatewayUrl string = apiManagement.outputs.apiManagementGatewayUrl
