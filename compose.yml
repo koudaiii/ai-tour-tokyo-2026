@@ -46,8 +46,11 @@ services:
       POSTGRES_DB: isuconp
     volumes:
       - postgres:/var/lib/postgresql/data
-      - ./sql/isuconp_data.dump:/docker-entrypoint-initdb.d/isuconp_data.dump:ro
-      - ./script/restore:/docker-entrypoint-initdb.d/1_restore:ro
+      - sql/bootstrap_create_database.sql:/docker-entrypoint-initdb.d/bootstrap_create_database.sql:ro
+      - sql/bootstrap_create_tables.sql:/docker-entrypoint-initdb.d/bootstrap_create_tables.sql:ro
+      - sql/bootstrap_fix_sequences.sql:/docker-entrypoint-initdb.d/bootstrap_fix_sequences.sql:ro
+      - sql/bootstrap_grant_connect.sql:/docker-entrypoint-initdb.d/bootstrap_grant_connect.sql:ro
+      - sql/bootstrap_grant_local_privileges.sql:/docker-entrypoint-initdb.d/bootstrap_grant_local_privileges.sql:ro
     ports:
       - "5432:5432"
     networks:
