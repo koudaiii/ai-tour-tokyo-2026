@@ -8,27 +8,15 @@ This is **private-isu**, a practice environment for ISUCON (Japanese web perform
 
 This repository is a fork of [catatsuy/private-isu](https://github.com/catatsuy/private-isu) with the following changes:
 - Simplified to Python implementation only (Flask + gunicorn)
-- Migrated from MySQL to **PostgreSQL 17**
+- Migrated from MySQL to **PostgreSQL 18**
 - Application and configuration files placed at repository root (not under `webapp/`)
 
 ## Essential Setup Commands
 
 Before working, initialize the project:
 ```bash
-make init  # Downloads PostgreSQL dump and benchmarker image fixtures
+script/bootstrap
 ```
-
-### Data Preparation for PostgreSQL
-
-`make init` downloads and decompresses a PostgreSQL custom-format dump (`sql/isuconp_data.dump`):
-```bash
-make init
-```
-
-Docker Compose initializes PostgreSQL via `/docker-entrypoint-initdb.d` using:
-- `script/restore` (restores `sql/isuconp_data.dump` with `pg_restore`)
-
-Note: bootstrap SQL helpers under `sql/bootstrap_*.sql` are fixed to `isuconp` role/database for local auto-fix checks.
 
 ## Common Development Commands
 
@@ -66,10 +54,11 @@ cd benchmarker
 
 ### Application Structure
 - **Runtime**: Python 3.14, Flask, gunicorn
-- **Database**: PostgreSQL 17 with users, posts, comments tables
+- **Database**: PostgreSQL 18 with users, posts, comments tables
 - **DB Driver**: psycopg2-binary with RealDictCursor
 - **Cache**: Memcached for session storage (Flask-Session)
 - **Web Server**: Nginx 1.28 as reverse proxy
+- **API Gateway**: Azure API Management (Consumption SKU, OpenAPI spec from `openapi.yaml`)
 - **Images**: Stored as bytea in database (performance optimization target)
 
 ### Key Performance Bottlenecks
@@ -103,12 +92,22 @@ Main tables (PostgreSQL, defined in `sql/bootstrap_create_table.sql`):
 │   ├── bootstrap_*.sql   # SQL helpers used by script/bootstrap checks/fixes
 │   ├── isuconp_data.dump # PostgreSQL custom-format dump (from make init, ignored)
 │   └── .gitignore        # Ignores *.bz2 and *.dump
+├── mcp-server/
+│   ├── function_app.py   # Azure Functions MCP server (scenario-based tools)
+│   ├── requirements.txt  # Python dependencies (azure-functions>=1.24.0)
+│   ├── host.json         # Functions host config with extension bundle
+│   └── local.settings.json # Local dev settings (gitignored)
 ├── script/
-│   ├── restore   # Restore script for PostgreSQL dump
 │   ├── bootstrap         # Local environment bootstrap
 │   ├── server            # Local web app launcher
+│   ├── azurite           # Start Azurite local storage emulator
+│   ├── mcp-server        # Start MCP server locally
+│   ├── deploy-infra      # Deploy Azure infra from infra/main.bicep
+│   ├── deploy-func       # Deploy MCP server code to Azure Functions
+│   ├── restore           # Restore script for PostgreSQL dump
 │   ├── backup            # DB dump backup helper
 │   └── upload-to-github  # Release upload helper
+├── infra/                # Bicep templates for Azure infrastructure
 ├── templates/            # Jinja2 HTML templates
 ├── public/               # Static assets (CSS, JS, images)
 ├── etc/nginx/conf.d/     # Nginx configuration
@@ -134,6 +133,38 @@ Common optimization targets:
 - PostgreSQL via `psycopg2-binary` with `RealDictCursor`
 - Templates: Jinja2 (in `templates/`)
 
+## Remote MCP Server
+
+The `mcp-server/` directory contains an Azure Functions app that exposes MCP tools for the private-isu API.
+
+### Architecture
+- **Runtime**: Azure Functions Python v2 programming model
+- **Transport**: Streamable HTTP (endpoint: `/runtime/webhooks/mcp`)
+- **Backend**: Tools call the private-isu API (`API_BASE_URL`)
+- **Storage**: Azure Queue Storage required by MCP extension (Azurite locally)
+
+### MCP Tools
+- `browse_timeline` - Browse posts with keyword filter and pagination
+- `explore_user` - User profile + stats + recent posts in one call
+- `find_popular_posts` - Posts ranked by engagement (comment count)
+- `get_conversation` - Post + comment thread in readable format
+- `compare_users` - Side-by-side user activity comparison
+- `search_posts` - Keyword search across posts and comments
+
+### Local Development
+Requires three processes running simultaneously:
+```bash
+script/server      # API server (port 8080)
+script/azurite     # Azurite storage emulator (ports 10000-10002)
+script/mcp-server  # MCP server (port 7071)
+```
+
+### Deployment
+```bash
+script/deploy-infra  # Deploy Azure infrastructure (first time)
+script/deploy-func   # Deploy MCP server code (repeatable)
+```
+
 ## Environment Variables
 
 Key environment variables for the application:
@@ -143,3 +174,7 @@ Key environment variables for the application:
 - `ISUCONP_DB_PASSWORD`: Database password (default: `isuconp`)
 - `ISUCONP_DB_NAME`: Database name (default: `isuconp`)
 - `ISUCONP_MEMCACHED_ADDRESS`: Memcached server address (default: `localhost:11211`)
+- `APIM_NAME`: Azure API Management instance name (set by `script/deploy-infra`)
+- `APIM_GATEWAY_URL`: API Management gateway URL (set by `script/deploy-infra`)
+- `FUNCTION_APP_NAME`: Azure Functions app name (set by `script/deploy-infra`)
+- `FUNCTION_APP_MCP_ENDPOINT`: Remote MCP endpoint URL (set by `script/deploy-infra`)

@@ -3,12 +3,10 @@
 ## Project Structure & Module Organization
 - Application files (`app.py`, `pyproject.toml`, `Dockerfile`, `compose.yml`) are at the repository root.
 - `sql/` holds PostgreSQL schema (`bootstrap_create_table.sql`), PostgreSQL dump (`isuconp_data.dump`), and bootstrap helper SQL files (`bootstrap_*.sql`).
-- `script/restore` restores `sql/isuconp_data.dump` during Docker PostgreSQL initialization.
 - `templates/` contains Jinja2 HTML templates; `public/` holds static assets (CSS, JS, images).
 - `benchmarker/` contains the Go load tester, while `provisioning/` tracks Ansible roles for operational parity.
 
 ## Build, Test, and Development Commands
-- `make init`: download the canonical PostgreSQL dump and benchmark image fixtures.
 - `docker compose up`: run nginx, the app tier, PostgreSQL, and Memcached locally.
 - `cd benchmarker && make && ./bin/benchmarker -t "http://localhost:8080" -u ./userdata`: rebuild and execute the scorer after optimizations.
 
