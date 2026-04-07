@@ -124,6 +124,7 @@ VS Code (`.vscode/mcp.json`):
 ## Script Usage
 
 - `script/bootstrap`: Prepare local development environment (DB create/table create + dependency/memcached checks included)
+- `script/seed`: Seed demo users/posts/images from `provisioning/seed/*`
 - `script/server`: Start the web application
 - `script/restore`: Restore PostgreSQL dump (optional legacy flow)
 - `script/backup`: Create PostgreSQL dump
