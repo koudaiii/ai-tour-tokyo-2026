@@ -20,10 +20,10 @@
         - python3
 
     - name: Install UV CLI into virtualenv
-      shell: .venv/bin/pip install uv
-      args:
-        chdir: /home/isucon/private_isu
-        creates: /home/isucon/private_isu/.venv/bin/uv
+      pip:
+        virtualenv: /home/isucon/private_isu/.venv
+        name:
+          - uv
       tags:
         - python3
 
