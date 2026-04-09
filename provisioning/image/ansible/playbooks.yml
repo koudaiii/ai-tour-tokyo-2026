@@ -6,6 +6,6 @@
 - import_playbook: 04_nginx.yml
 - import_playbook: 05_xbuild.yml
 - import_playbook: 06_app.yml
-- import_playbook: 07_createdb.yml
-- import_playbook: 08_application.yml
-- import_playbook: 10_build_benchmarker.yml
+- import_playbook: 07_application.yml
+- import_playbook: 08_createdb.yml
+- import_playbook: 09_build_benchmarker.yml
