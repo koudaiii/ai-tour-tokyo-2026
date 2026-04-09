@@ -22,11 +22,6 @@ script/bootstrap
 
 ### Building Applications
 
-**Benchmarker:**
-```bash
-cd benchmarker
-make  # builds to ./bin/benchmarker
-```
 
 ### Running Applications
 
@@ -39,16 +34,6 @@ Services: nginx (port 80), app (gunicorn on port 8080), postgres (port 5432), me
 
 The postgres service has a healthcheck (`pg_isready`), and the app waits for it before starting.
 
-**Running benchmarker:**
-```bash
-cd benchmarker
-./bin/benchmarker -t "http://localhost:8080" -u ./userdata
-```
-
-**Expected output format:**
-```json
-{"pass":true,"score":1710,"success":1434,"fail":0,"messages":[]}
-```
 
 ## Architecture Overview
 
@@ -111,7 +96,6 @@ Main tables (PostgreSQL, defined in `sql/bootstrap_create_table.sql`):
 ├── templates/            # Jinja2 HTML templates
 ├── public/               # Static assets (CSS, JS, images)
 ├── etc/nginx/conf.d/     # Nginx configuration
-├── benchmarker/          # Go-based load testing tool
 ├── provisioning/         # Ansible playbooks
 └── manual.md             # Competition manual
 ```

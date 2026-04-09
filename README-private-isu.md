@@ -60,20 +60,6 @@ Ubuntu 24.04
 
 * Docker Composeを利用したローカル開発を推奨します。
 
-### ベンチマーカーインスタンス上での実行方法
-
-```sh
-$ sudo su - isucon
-$ /home/isucon/private_isu.git/benchmarker/bin/benchmarker -u /home/isucon/private_isu.git/benchmarker/userdata -t http://<target IP>
-```
-
-競技者用インスタンス上でのベンチマーカー実行方法
-
-```sh
-$ sudo su - isucon
-$ /home/isucon/private_isu/benchmarker/bin/benchmarker -u /home/isucon/private_isu/benchmarker/userdata -t http://localhost
-```
-
 ### 手元で動かす
 
 **注意:** いずれの手順も、ディスク容量に十分な空きがあるマシン上で行ってください。
