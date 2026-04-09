@@ -15,3 +15,9 @@
         creates: /home/isucon/.local/python/bin/python
       tags:
         - python3
+    - name: install uv to custom Python
+      command: /home/isucon/.local/python/bin/python -m pip install --upgrade pip uv
+      args:
+        creates: /home/isucon/.local/python/bin/uv
+      tags:
+        - python3
