@@ -20,6 +20,9 @@ param functionsStorageAccountName string
 @description('Base URL of the Container App API (e.g. https://aca-xxx.azurecontainerapps.io)')
 param apiBaseUrl string
 
+@description('Application Insights connection string for monitoring')
+param appInsightsConnectionString string = ''
+
 ////////////
 // Storage Account for Azure Functions runtime
 ////////////
@@ -92,6 +95,10 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
         {
           name: 'API_BASE_URL'
           value: apiBaseUrl
+        }
+        {
+          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+          value: appInsightsConnectionString
         }
       ]
     }

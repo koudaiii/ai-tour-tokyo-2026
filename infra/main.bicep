@@ -277,6 +277,7 @@ module functions 'functions.bicep' = {
     appServicePlanName: functionAppServicePlanName
     functionsStorageAccountName: functionsStorageAccountName
     apiBaseUrl: containerApps.outputs.containerAppUrl
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
   }
 }
 
@@ -293,6 +294,7 @@ module seedFunctions 'seed-functions.bicep' = {
     azureStorageAccountUrl: storageAccount.outputs.primaryBlobEndpoint
     azureStorageAccountResourceId: storageAccount.outputs.resourceId
     azureStorageContainerName: containerName
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
   }
 }
 
