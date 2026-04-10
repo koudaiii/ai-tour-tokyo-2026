@@ -202,7 +202,7 @@ print_seed_config() {
   local seed_hostname rg_name seed_key_cmd
   seed_hostname="${SEED_FUNCTION_APP_NAME}.azurewebsites.net"
   rg_name="rg-${WORKLOAD_CODE}-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}"
-  seed_key_cmd="az functionapp function keys list --resource-group ${rg_name} --name ${SEED_FUNCTION_APP_NAME} --function-name seed-now --query default -o tsv"
+  seed_key_cmd="az functionapp function keys list --resource-group ${rg_name} --name ${SEED_FUNCTION_APP_NAME} --function-name seed_now --query default -o tsv"
 
   cat <<EOF
 
@@ -214,7 +214,7 @@ Seed Function App: ${SEED_FUNCTION_APP_NAME}
 Seed Endpoint: https://${seed_hostname}/api/seed-now
 
 # Deploy seed-functions code to Azure Functions:
-cd seed-functions && func azure functionapp publish ${SEED_FUNCTION_APP_NAME}
+cd seed-functions && func azure functionapp publish ${SEED_FUNCTION_APP_NAME} --python
 
 # Get function key:
 ${seed_key_cmd}

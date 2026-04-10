@@ -165,7 +165,7 @@ After `script/deploy-infra`, publish the seed function code:
 
 ```sh
 cd seed-functions
-func azure functionapp publish <SEED_FUNCTION_APP_NAME>
+func azure functionapp publish <SEED_FUNCTION_APP_NAME> --python
 ```
 
 Then trigger manually from local:
@@ -174,7 +174,7 @@ Then trigger manually from local:
 SEED_KEY="$(az functionapp function keys list \
   --resource-group <RESOURCE_GROUP> \
   --name <SEED_FUNCTION_APP_NAME> \
-  --function-name seed-now \
+  --function-name seed_now \
   --query default -o tsv)"
 
 curl -s -X POST "https://<SEED_FUNCTION_APP_NAME>.azurewebsites.net/api/seed-now?code=${SEED_KEY}" | jq .
