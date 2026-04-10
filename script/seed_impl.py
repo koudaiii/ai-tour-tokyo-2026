@@ -114,46 +114,14 @@ def extract_images(images_zip: Path, extract_dir: Path) -> list[Path]:
     return image_paths
 
 
-def main() -> int:
-    load_env()
-    global AZURE_STORAGE_CONTAINER_NAME
-    AZURE_STORAGE_CONTAINER_NAME = os.environ.get("AZURE_STORAGE_CONTAINER_NAME", "images")
-
-    parser = argparse.ArgumentParser(description="Seed demo users and posts")
-    parser.add_argument(
-        "--users-json",
-        default="provisioning/seed/demo_users.json",
-        help="Path to demo users JSON",
-    )
-    parser.add_argument(
-        "--posts-json",
-        default="provisioning/seed/demo_posts_text.json",
-        help="Path to demo post bodies JSON",
-    )
-    parser.add_argument(
-        "--images-zip",
-        default="provisioning/seed/images.zip",
-        help="Path to image zip file",
-    )
-    parser.add_argument(
-        "--extract-dir",
-        default="provisioning/seed",
-        help="Extraction directory for images zip",
-    )
-    parser.add_argument(
-        "--post-count",
-        type=int,
-        default=100,
-        help="Number of posts to create",
-    )
-    args = parser.parse_args()
-
-    users_json = Path(args.users_json)
-    posts_json = Path(args.posts_json)
-    images_zip = Path(args.images_zip)
-    extract_dir = Path(args.extract_dir)
-    post_count = args.post_count
-
+def run_seed(
+    users_json: Path,
+    posts_json: Path,
+    images_zip: Path,
+    extract_dir: Path,
+    post_count: int,
+    log=print,
+) -> int:
     if post_count <= 0:
         raise ValueError("--post-count must be greater than 0")
 
@@ -169,7 +137,7 @@ def main() -> int:
     if not isinstance(posts_data, list) or not posts_data:
         raise ValueError(f"Invalid posts JSON: {posts_json}")
 
-    print("[seed] Step 1/3: create/update users")
+    log("[seed] Step 1/3: create/update users")
 
     database_url = resolve_database_url() or DEFAULT_DB_URL
     container = blob_container_client()
@@ -199,13 +167,13 @@ def main() -> int:
                 )
                 user_ids.append(cur.fetchone()[0])
 
-            print(f"[seed]   users ready: {len(user_ids)}")
+            log(f"[seed]   users ready: {len(user_ids)}")
 
-            print("[seed] Step 2/3: extract images.zip")
+            log("[seed] Step 2/3: extract images.zip")
             image_paths = extract_images(images_zip, extract_dir)
-            print(f"[seed]   extracted images found: {len(image_paths)}")
+            log(f"[seed]   extracted images found: {len(image_paths)}")
 
-            print("[seed] Step 3/3: create demo posts with images")
+            log("[seed] Step 3/3: create demo posts with images")
             if len(posts_data) < post_count:
                 raise ValueError(
                     f"Not enough post texts in {posts_json}: need {post_count}, got {len(posts_data)}"
@@ -248,7 +216,7 @@ def main() -> int:
                             (user_id, mime, psycopg2.Binary(b""), body, blob_key),
                         )
                     except Exception:
-                        print(
+                        log(
                             f"[seed]   warning: blob upload failed for {image_path.name}; fallback to DB imgdata"
                         )
                         cur.execute(
@@ -269,7 +237,7 @@ def main() -> int:
                 created += 1
 
         conn.commit()
-        print(f"[seed] done: created {created} posts")
+        log(f"[seed] done: created {created} posts")
     except Exception:
         conn.rollback()
         raise
@@ -277,6 +245,52 @@ def main() -> int:
         conn.close()
 
     return 0
+
+
+def main() -> int:
+    load_env()
+    global AZURE_STORAGE_CONTAINER_NAME
+    AZURE_STORAGE_CONTAINER_NAME = os.environ.get(
+        "AZURE_STORAGE_CONTAINER_NAME", "images"
+    )
+
+    parser = argparse.ArgumentParser(description="Seed demo users and posts")
+    parser.add_argument(
+        "--users-json",
+        default="provisioning/seed/demo_users.json",
+        help="Path to demo users JSON",
+    )
+    parser.add_argument(
+        "--posts-json",
+        default="provisioning/seed/demo_posts_text.json",
+        help="Path to demo post bodies JSON",
+    )
+    parser.add_argument(
+        "--images-zip",
+        default="provisioning/seed/images.zip",
+        help="Path to image zip file",
+    )
+    parser.add_argument(
+        "--extract-dir",
+        default="provisioning/seed",
+        help="Extraction directory for images zip",
+    )
+    parser.add_argument(
+        "--post-count",
+        type=int,
+        default=100,
+        help="Number of posts to create",
+    )
+    args = parser.parse_args()
+
+    return run_seed(
+        users_json=Path(args.users_json),
+        posts_json=Path(args.posts_json),
+        images_zip=Path(args.images_zip),
+        extract_dir=Path(args.extract_dir),
+        post_count=args.post_count,
+        log=print,
+    )
 
 
 if __name__ == "__main__":
