@@ -62,6 +62,9 @@ param postgresPrivateEndpointSubnetResourceId string
 @description('Private DNS zone resource ID for PostgreSQL private endpoint')
 param postgresPrivateDnsZoneResourceId string
 
+@description('Log Analytics workspace resource ID for diagnostic settings')
+param logAnalyticsWorkspaceId string = ''
+
 module postgresServer 'br/public:avm/res/db-for-postgre-sql/flexible-server:0.15.2' = {
   name: 'postgresFlexibleServerDeployment'
   params: {
@@ -103,6 +106,24 @@ module postgresServer 'br/public:avm/res/db-for-postgre-sql/flexible-server:0.15
         collation: 'en_US.utf8'
       }
     ]
+    diagnosticSettings: !empty(logAnalyticsWorkspaceId) ? [
+      {
+        name: 'postgres-diagnostics'
+        workspaceResourceId: logAnalyticsWorkspaceId
+        logCategoriesAndGroups: [
+          {
+            categoryGroup: 'allLogs'
+            enabled: true
+          }
+        ]
+        metricCategories: [
+          {
+            category: 'AllMetrics'
+            enabled: true
+          }
+        ]
+      }
+    ] : []
   }
 }
 
@@ -123,6 +144,7 @@ resource postgresEntraAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administr
   ]
 }
 
+output postgresServerResourceId string = postgresServerResource.id
 output postgresServerName string = postgresServerName
 output postgresHost string = '${postgresServerName}.postgres.database.azure.com'
 output postgresPort int = 5432
