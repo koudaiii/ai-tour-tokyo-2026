@@ -5,8 +5,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.41.2.15936",
-      "templateHash": "9305093938188019830"
+      "version": "0.42.1.51946",
+      "templateHash": "9255156669409908604"
     },
     "description": "Deploy Azure Storage Account + Azure Database for PostgreSQL Flexible Server + Azure Container Apps for private-isu"
   },
@@ -322,8 +322,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "311804865726027998"
+              "version": "0.42.1.51946",
+              "templateHash": "14514040674218283620"
             }
           },
           "parameters": {
@@ -8683,8 +8683,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "15476015812180917888"
+              "version": "0.42.1.51946",
+              "templateHash": "10707306148544887185"
             }
           },
           "parameters": {
@@ -11566,8 +11566,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "6087952129155306963"
+              "version": "0.42.1.51946",
+              "templateHash": "7864303006057342506"
             }
           },
           "parameters": {
@@ -11813,8 +11813,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "10276775715935484027"
+              "version": "0.42.1.51946",
+              "templateHash": "14506192395239535853"
             }
           },
           "parameters": {
@@ -12012,8 +12012,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "8909825863860644804"
+              "version": "0.42.1.51946",
+              "templateHash": "7550818171237732201"
             }
           },
           "parameters": {

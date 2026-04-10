@@ -9,15 +9,15 @@ usage() {
 Usage: script/seed [options]
 
 Seed demo data in this order:
-  1) create/update users from provisioning/seed/demo_users.json
-  2) extract provisioning/seed/images.zip
-  3) create posts from provisioning/seed/demo_posts_text.json with extracted images
+  1) create/update users from data/demo_users.json
+  2) extract data/images.zip
+  3) create posts from data/demo_posts_text.json with extracted images
 
 Options:
-  --users-json PATH     Users JSON file (default: provisioning/seed/demo_users.json)
-  --posts-json PATH     Post bodies JSON file (default: provisioning/seed/demo_posts_text.json)
-  --images-zip PATH     Images zip file (default: provisioning/seed/images.zip)
-  --extract-dir PATH    Extraction directory (default: provisioning/seed)
+  --users-json PATH     Users JSON file (default: data/demo_users.json)
+  --posts-json PATH     Post bodies JSON file (default: data/demo_posts_text.json)
+  --images-zip PATH     Images zip file (default: data/images.zip)
+  --extract-dir PATH    Extraction directory (default: data)
   --post-count NUM      Number of posts to create (default: 100)
   -h, --help            Show this help
 
