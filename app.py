@@ -275,6 +275,11 @@ def get_initialize():
     return ""
 
 
+@app.route("/health")
+def get_health():
+    return flask.jsonify({"status": "ok"}), 200
+
+
 @app.route("/public/<path:filename>")
 def get_public_file(filename):
     # nginx がないローカル実行時向けフォールバック。
