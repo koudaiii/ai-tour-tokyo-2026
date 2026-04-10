@@ -31,6 +31,8 @@ param functionsStorageAccountName = 'stfn${workloadCode}${regionCode}${substring
 param seedFunctionAppName = 'func-${workloadCode}-seed-${deploymentEnvironment}-${regionCode}-${substring(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000'), 2, 10)}'
 param seedFunctionAppServicePlanName = 'asp-${workloadCode}-seed-${deploymentEnvironment}-${regionCode}-${substring(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000'), 2, 10)}'
 param seedFunctionsStorageAccountName = 'stfs${workloadCode}${regionCode}${substring(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000'), 2, 6)}${substring(uniqueString(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000'), 'seedfunc'), 0, 2)}'
+param logAnalyticsWorkspaceName = 'log-${workloadCode}-${deploymentEnvironment}-${regionCode}-${substring(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000'), 2, 10)}'
+param appInsightsName = 'appi-${workloadCode}-${deploymentEnvironment}-${regionCode}-${substring(readEnvironmentVariable('NOW_YYYYMMDDHHMM', '000000000000'), 2, 10)}'
 param tags = {
   project: 'private-isu'
   environment: 'dev'
