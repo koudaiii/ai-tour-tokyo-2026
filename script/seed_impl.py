@@ -21,6 +21,18 @@ DEFAULT_DB_URL = "postgresql://isuconp:isuconp@127.0.0.1:5432/isuconp?sslmode=di
 ROOT_DIR = Path(__file__).resolve().parents[1]
 AZURE_STORAGE_CONTAINER_NAME = os.environ.get("AZURE_STORAGE_CONTAINER_NAME", "images")
 
+# Seed account name configuration
+# Uses "_" separator (hyphen is rejected by validate_user regex [0-9a-zA-Z_]{3,})
+SEED_RUN_ID_LENGTH = 8
+
+
+def generate_run_id() -> str:
+    return uuid.uuid4().hex[:SEED_RUN_ID_LENGTH]
+
+
+def make_seed_account_name(base_name: str, run_id: str) -> str:
+    return f"{base_name}_{run_id}"
+
 _blob_service_client = None
 
 
@@ -120,6 +132,7 @@ def run_seed(
     images_zip: Path,
     extract_dir: Path,
     post_count: int,
+    run_id: str | None = None,
     log=print,
 ) -> int:
     if post_count <= 0:
@@ -137,6 +150,10 @@ def run_seed(
     if not isinstance(posts_data, list) or not posts_data:
         raise ValueError(f"Invalid posts JSON: {posts_json}")
 
+    if not run_id:
+        run_id = generate_run_id()
+    log(f"[seed] run_id: {run_id}")
+
     log("[seed] Step 1/3: create/update users")
 
     database_url = resolve_database_url() or DEFAULT_DB_URL
@@ -148,7 +165,7 @@ def run_seed(
         with conn.cursor() as cur:
             user_ids: list[int] = []
             for entry in users_data:
-                account_name = entry.get("account_name")
+                account_name = make_seed_account_name(entry.get("account_name"), run_id)
                 password = entry.get("password")
                 if not account_name or not password:
                     raise ValueError(
@@ -281,6 +298,11 @@ def main() -> int:
         default=100,
         help="Number of posts to create",
     )
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Run ID suffix for account names (auto-generated if omitted)",
+    )
     args = parser.parse_args()
 
     return run_seed(
@@ -289,6 +311,7 @@ def main() -> int:
         images_zip=Path(args.images_zip),
         extract_dir=Path(args.extract_dir),
         post_count=args.post_count,
+        run_id=args.run_id,
         log=print,
     )
 

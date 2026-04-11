@@ -11,6 +11,18 @@ import zipfile
 from http.cookiejar import CookieJar
 from pathlib import Path
 
+# Seed account name configuration
+# Uses "_" separator (hyphen is rejected by validate_user regex [0-9a-zA-Z_]{3,})
+SEED_RUN_ID_LENGTH = 8
+
+
+def generate_run_id() -> str:
+    return uuid.uuid4().hex[:SEED_RUN_ID_LENGTH]
+
+
+def make_seed_account_name(base_name: str, run_id: str) -> str:
+    return f"{base_name}_{run_id}"
+
 
 _CSRF_TOKEN_RE = re.compile(r'name="csrf_token"\s+value="([^"]+)"')
 
@@ -166,6 +178,7 @@ def run_seed_via_api(
     images_zip: Path,
     extract_dir: Path,
     post_count: int,
+    run_id: str | None = None,
     log=print,
 ) -> int:
     if not api_base_url:
@@ -194,9 +207,13 @@ def run_seed_via_api(
             f"Not enough images: need {post_count}, got {len(image_paths)}"
         )
 
+    if not run_id:
+        run_id = generate_run_id()
+    log(f"[seed] run_id: {run_id}")
+
     sessions: list[tuple[ApiSession, str, str]] = []
     for entry in users_data:
-        account_name = entry.get("account_name")
+        account_name = make_seed_account_name(entry.get("account_name"), run_id)
         password = entry.get("password")
         if not account_name or not password:
             raise ValueError(

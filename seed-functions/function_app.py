@@ -61,6 +61,11 @@ def seed_now(req: func.HttpRequest) -> func.HttpResponse:
             else os.environ.get("SEED_POST_COUNT", "100")
         )
     )
+    run_id = (
+        body.get("run_id")
+        if isinstance(body, dict)
+        else None
+    )
 
     try:
         created = run_seed_via_api(
@@ -70,6 +75,7 @@ def seed_now(req: func.HttpRequest) -> func.HttpResponse:
             images_zip=images_zip,
             extract_dir=extract_dir,
             post_count=post_count,
+            run_id=run_id,
             log=logger.info,
         )
         return func.HttpResponse(

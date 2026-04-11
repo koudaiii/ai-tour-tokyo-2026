@@ -6,3 +6,4 @@ __blobstorage__/
 __queuestorage__/
 AzuriteConfig
 provisioning/seed/images
+data/images

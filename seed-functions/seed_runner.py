@@ -15,6 +15,18 @@ from azure.storage.blob import BlobServiceClient, ContentSettings
 
 _blob_service_client = None
 
+# Seed account name configuration
+# Uses "_" separator (hyphen is rejected by validate_user regex [0-9a-zA-Z_]{3,})
+SEED_RUN_ID_LENGTH = 8
+
+
+def generate_run_id() -> str:
+    return uuid.uuid4().hex[:SEED_RUN_ID_LENGTH]
+
+
+def make_seed_account_name(base_name: str, run_id: str) -> str:
+    return f"{base_name}_{run_id}"
+
 
 def calculate_passhash(account_name: str, password: str) -> str:
     salt = hashlib.sha512(account_name.encode("utf-8")).hexdigest()
@@ -82,6 +94,7 @@ def run_seed(
     images_zip: Path,
     extract_dir: Path,
     post_count: int,
+    run_id: str | None = None,
     log=print,
 ) -> int:
     if post_count <= 0:
@@ -98,6 +111,10 @@ def run_seed(
     if not isinstance(posts_data, list) or not posts_data:
         raise ValueError(f"Invalid posts JSON: {posts_json}")
 
+    if not run_id:
+        run_id = generate_run_id()
+    log(f"[seed] run_id: {run_id}")
+
     container = _blob_container_client()
     conn = psycopg2.connect(database_url)
     try:
@@ -105,7 +122,7 @@ def run_seed(
         with conn.cursor() as cur:
             user_ids: list[int] = []
             for entry in users_data:
-                account_name = entry.get("account_name")
+                account_name = make_seed_account_name(entry.get("account_name"), run_id)
                 password = entry.get("password")
                 if not account_name or not password:
                     raise ValueError(
