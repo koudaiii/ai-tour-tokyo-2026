@@ -32,6 +32,9 @@ param azureStorageContainerName string = 'images'
 @description('Default number of posts to create for one seed run')
 param seedPostCount int = 100
 
+@description('Application Insights connection string for monitoring')
+param appInsightsConnectionString string = ''
+
 var functionAppBaseSettings = [
   {
     name: 'AzureWebJobsStorage'
@@ -60,6 +63,10 @@ var functionAppBaseSettings = [
   {
     name: 'SEED_POST_COUNT'
     value: string(seedPostCount)
+  }
+  {
+    name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+    value: appInsightsConnectionString
   }
 ]
 var functionAppContentSettings = [

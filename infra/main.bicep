@@ -149,6 +149,12 @@ param seedFunctionAppServicePlanName string = 'asp-${workloadCode}-seed-${deploy
 @maxLength(24)
 param seedFunctionsStorageAccountName string = 'stfs${workloadCode}${regionCode}${substring(nowYyyymmddHhmm, 2, 6)}${substring(uniqueString(subscription().subscriptionId, nowYyyymmddHhmm, 'seedfunc'), 0, 2)}'
 
+@description('Log Analytics workspace name')
+param logAnalyticsWorkspaceName string = 'log-${workloadCode}-${deploymentEnvironment}-${regionCode}-${substring(nowYyyymmddHhmm, 2, 10)}'
+
+@description('Application Insights name')
+param appInsightsName string = 'appi-${workloadCode}-${deploymentEnvironment}-${regionCode}-${substring(nowYyyymmddHhmm, 2, 10)}'
+
 @description('Tags to apply to all resources')
 param tags object = {}
 
@@ -176,6 +182,17 @@ module network 'network.bicep' = {
     virtualNetworkAddressPrefix: virtualNetworkAddressPrefix
     containerAppsInfrastructureSubnetPrefix: containerAppsInfrastructureSubnetPrefix
     postgresPrivateEndpointSubnetPrefix: postgresPrivateEndpointSubnetPrefix
+  }
+}
+
+module monitoring 'monitoring.bicep' = {
+  name: 'monitoringDeployment'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    logAnalyticsWorkspaceName: logAnalyticsWorkspaceName
+    appInsightsName: appInsightsName
   }
 }
 
@@ -226,6 +243,7 @@ module postgres 'postgresql.bicep' = {
     postgresStorageSizeGB: postgresStorageSizeGB
     postgresPrivateEndpointSubnetResourceId: network.outputs.postgresPrivateEndpointSubnetResourceId
     postgresPrivateDnsZoneResourceId: network.outputs.postgresPrivateDnsZoneResourceId
+    logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
   }
 }
 
@@ -244,6 +262,8 @@ module containerApps 'containerapps.bicep' = {
     azureStorageAccountResourceId: storageAccount.outputs.resourceId
     azureStorageContainerName: containerName
     postgresDatabaseUrl: 'postgresql://${postgresAdminUser}:${postgresAdminPassword}@${postgres.outputs.postgresHost}:5432/${postgresDatabaseName}?sslmode=require'
+    logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
   }
 }
 
@@ -257,6 +277,7 @@ module functions 'functions.bicep' = {
     appServicePlanName: functionAppServicePlanName
     functionsStorageAccountName: functionsStorageAccountName
     apiBaseUrl: containerApps.outputs.containerAppUrl
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
   }
 }
 
@@ -273,6 +294,7 @@ module seedFunctions 'seed-functions.bicep' = {
     azureStorageAccountUrl: storageAccount.outputs.primaryBlobEndpoint
     azureStorageAccountResourceId: storageAccount.outputs.resourceId
     azureStorageContainerName: containerName
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
   }
 }
 
@@ -287,6 +309,16 @@ module apiManagement 'apimanagement.bicep' = {
     publisherName: apimPublisherName
     skuName: apimSkuName
     containerAppUrl: containerApps.outputs.containerAppUrl
+  }
+}
+
+module alerts 'alerts.bicep' = {
+  name: 'alertsDeployment'
+  scope: rg
+  params: {
+    tags: tags
+    containerAppResourceId: containerApps.outputs.containerAppResourceId
+    postgresServerResourceId: postgres.outputs.postgresServerResourceId
   }
 }
 
@@ -352,3 +384,9 @@ output seedFunctionAppName string = seedFunctions.outputs.functionAppName
 
 @description('Seed Function App URL')
 output seedFunctionAppUrl string = seedFunctions.outputs.functionAppUrl
+
+@description('Log Analytics workspace name')
+output logAnalyticsWorkspaceName string = logAnalyticsWorkspaceName
+
+@description('Application Insights connection string')
+output appInsightsConnectionString string = monitoring.outputs.appInsightsConnectionString

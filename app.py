@@ -24,6 +24,12 @@ POSTS_PER_PAGE = 20
 
 load_dotenv()
 
+# Configure Azure Monitor / Application Insights
+_appinsights_conn_str = os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING")
+if _appinsights_conn_str:
+    from azure.monitor.opentelemetry import configure_azure_monitor
+    configure_azure_monitor(connection_string=_appinsights_conn_str)
+
 AZURE_STORAGE_CONTAINER_NAME = os.environ.get("AZURE_STORAGE_CONTAINER_NAME", "images")
 
 _blob_service_client = None
@@ -267,6 +273,11 @@ def nl2br(eval_ctx, value):
 def get_initialize():
     db_initialize()
     return ""
+
+
+@app.route("/health")
+def get_health():
+    return flask.jsonify({"status": "ok"}), 200
 
 
 @app.route("/public/<path:filename>")

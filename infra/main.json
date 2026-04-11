@@ -5,8 +5,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.42.1.51946",
-      "templateHash": "16318676814529411024"
+      "version": "0.41.2.15936",
+      "templateHash": "6702974920267452872"
     },
     "description": "Deploy Azure Storage Account + Azure Database for PostgreSQL Flexible Server + Azure Container Apps for private-isu"
   },
@@ -290,6 +290,20 @@
         "description": "Name of the Storage Account for seed Azure Functions runtime"
       }
     },
+    "logAnalyticsWorkspaceName": {
+      "type": "string",
+      "defaultValue": "[format('log-{0}-{1}-{2}-{3}', parameters('workloadCode'), parameters('deploymentEnvironment'), parameters('regionCode'), substring(parameters('nowYyyymmddHhmm'), 2, 10))]",
+      "metadata": {
+        "description": "Log Analytics workspace name"
+      }
+    },
+    "appInsightsName": {
+      "type": "string",
+      "defaultValue": "[format('appi-{0}-{1}-{2}-{3}', parameters('workloadCode'), parameters('deploymentEnvironment'), parameters('regionCode'), substring(parameters('nowYyyymmddHhmm'), 2, 10))]",
+      "metadata": {
+        "description": "Application Insights name"
+      }
+    },
     "tags": {
       "type": "object",
       "defaultValue": {},
@@ -345,8 +359,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.42.1.51946",
-              "templateHash": "14514040674218283620"
+              "version": "0.41.2.15936",
+              "templateHash": "311804865726027998"
             }
           },
           "parameters": {
@@ -467,6 +481,133 @@
             "postgresPrivateDnsZoneResourceId": {
               "type": "string",
               "value": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.postgres.database.azure.com')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "rg"
+      ]
+    },
+    "monitoring": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "monitoringDeployment",
+      "resourceGroup": "[variables('resourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "logAnalyticsWorkspaceName": {
+            "value": "[parameters('logAnalyticsWorkspaceName')]"
+          },
+          "appInsightsName": {
+            "value": "[parameters('appInsightsName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "394470703911171080"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "The Azure region for monitoring resource deployment"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags to apply to monitoring resources"
+              }
+            },
+            "logAnalyticsWorkspaceName": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics workspace name"
+              }
+            },
+            "appInsightsName": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights name"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2023-09-01",
+              "name": "[parameters('logAnalyticsWorkspaceName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "sku": {
+                  "name": "PerGB2018"
+                },
+                "retentionInDays": 30
+              }
+            },
+            {
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[parameters('appInsightsName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "web",
+              "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics workspace resource ID"
+              },
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+            },
+            "logAnalyticsWorkspaceCustomerId": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics workspace customer ID (GUID)"
+              },
+              "value": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName')), '2023-09-01').customerId]"
+            },
+            "appInsightsConnectionString": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights connection string"
+              },
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('appInsightsName')), '2020-02-02').ConnectionString]"
+            },
+            "appInsightsInstrumentationKey": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights instrumentation key"
+              },
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('appInsightsName')), '2020-02-02').InstrumentationKey]"
             }
           }
         }
@@ -8698,6 +8839,9 @@
           },
           "postgresPrivateDnsZoneResourceId": {
             "value": "[reference('network').outputs.postgresPrivateDnsZoneResourceId.value]"
+          },
+          "logAnalyticsWorkspaceId": {
+            "value": "[reference('monitoring').outputs.logAnalyticsWorkspaceId.value]"
           }
         },
         "template": {
@@ -8706,8 +8850,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.42.1.51946",
-              "templateHash": "10707306148544887185"
+              "version": "0.41.2.15936",
+              "templateHash": "2116989671178580162"
             }
           },
           "parameters": {
@@ -8825,6 +8969,13 @@
               "metadata": {
                 "description": "Private DNS zone resource ID for PostgreSQL private endpoint"
               }
+            },
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Log Analytics workspace resource ID for diagnostic settings"
+              }
             }
           },
           "resources": [
@@ -8923,7 +9074,8 @@
                         "collation": "en_US.utf8"
                       }
                     ]
-                  }
+                  },
+                  "diagnosticSettings": "[if(not(empty(parameters('logAnalyticsWorkspaceId'))), createObject('value', createArray(createObject('name', 'postgres-diagnostics', 'workspaceResourceId', parameters('logAnalyticsWorkspaceId'), 'logCategoriesAndGroups', createArray(createObject('categoryGroup', 'allLogs', 'enabled', true())), 'metricCategories', createArray(createObject('category', 'AllMetrics', 'enabled', true()))))), createObject('value', createArray()))]"
                 },
                 "template": {
                   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
@@ -11510,6 +11662,10 @@
             }
           ],
           "outputs": {
+            "postgresServerResourceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('postgresServerName'))]"
+            },
             "postgresServerName": {
               "type": "string",
               "value": "[parameters('postgresServerName')]"
@@ -11534,6 +11690,7 @@
         }
       },
       "dependsOn": [
+        "monitoring",
         "network",
         "rg"
       ]
@@ -11581,6 +11738,12 @@
           },
           "postgresDatabaseUrl": {
             "value": "[format('postgresql://{0}:{1}@{2}:5432/{3}?sslmode=require', parameters('postgresAdminUser'), parameters('postgresAdminPassword'), reference('postgres').outputs.postgresHost.value, parameters('postgresDatabaseName'))]"
+          },
+          "logAnalyticsWorkspaceId": {
+            "value": "[reference('monitoring').outputs.logAnalyticsWorkspaceId.value]"
+          },
+          "appInsightsConnectionString": {
+            "value": "[reference('monitoring').outputs.appInsightsConnectionString.value]"
           }
         },
         "template": {
@@ -11589,8 +11752,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.42.1.51946",
-              "templateHash": "7864303006057342506"
+              "version": "0.41.2.15936",
+              "templateHash": "13940810490400997174"
             }
           },
           "parameters": {
@@ -11662,6 +11825,19 @@
               "metadata": {
                 "description": "Application database URL for PostgreSQL"
               }
+            },
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics workspace resource ID for Container Apps diagnostics"
+              }
+            },
+            "appInsightsConnectionString": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Application Insights connection string"
+              }
             }
           },
           "resources": [
@@ -11674,6 +11850,13 @@
               "properties": {
                 "vnetConfiguration": {
                   "infrastructureSubnetId": "[parameters('containerAppsInfrastructureSubnetResourceId')]"
+                },
+                "appLogsConfiguration": {
+                  "destination": "log-analytics",
+                  "logAnalyticsConfiguration": {
+                    "customerId": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('logAnalyticsWorkspaceId'), '/'))), '2023-09-01').customerId]",
+                    "sharedKey": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', last(split(parameters('logAnalyticsWorkspaceId'), '/'))), '2023-09-01').primarySharedKey]"
+                  }
                 }
               }
             },
@@ -11728,6 +11911,36 @@
                         {
                           "name": "AZURE_STORAGE_CONTAINER_NAME",
                           "value": "[parameters('azureStorageContainerName')]"
+                        },
+                        {
+                          "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                          "value": "[parameters('appInsightsConnectionString')]"
+                        }
+                      ],
+                      "probes": [
+                        {
+                          "type": "Liveness",
+                          "httpGet": {
+                            "path": "/health",
+                            "port": 8080,
+                            "scheme": "HTTP"
+                          },
+                          "initialDelaySeconds": 10,
+                          "periodSeconds": 30,
+                          "failureThreshold": 3,
+                          "timeoutSeconds": 5
+                        },
+                        {
+                          "type": "Readiness",
+                          "httpGet": {
+                            "path": "/health",
+                            "port": 8080,
+                            "scheme": "HTTP"
+                          },
+                          "initialDelaySeconds": 5,
+                          "periodSeconds": 10,
+                          "failureThreshold": 3,
+                          "timeoutSeconds": 5
                         }
                       ]
                     },
@@ -11770,6 +11983,10 @@
               "type": "string",
               "value": "[parameters('containerAppName')]"
             },
+            "containerAppResourceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.App/containerApps', parameters('containerAppName'))]"
+            },
             "containerAppPrincipalId": {
               "type": "string",
               "value": "[reference(resourceId('Microsoft.App/containerApps', parameters('containerAppName')), '2024-03-01', 'full').identity.principalId]"
@@ -11794,6 +12011,7 @@
         }
       },
       "dependsOn": [
+        "monitoring",
         "network",
         "postgres",
         "rg",
@@ -11828,6 +12046,9 @@
           },
           "apiBaseUrl": {
             "value": "[reference('containerApps').outputs.containerAppUrl.value]"
+          },
+          "appInsightsConnectionString": {
+            "value": "[reference('monitoring').outputs.appInsightsConnectionString.value]"
           }
         },
         "template": {
@@ -11836,8 +12057,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.42.1.51946",
-              "templateHash": "14506192395239535853"
+              "version": "0.41.2.15936",
+              "templateHash": "5481282077744456462"
             }
           },
           "parameters": {
@@ -11878,6 +12099,13 @@
               "type": "string",
               "metadata": {
                 "description": "Base URL of the Container App API (e.g. https://aca-xxx.azurecontainerapps.io)"
+              }
+            },
+            "appInsightsConnectionString": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Application Insights connection string for monitoring"
               }
             }
           },
@@ -11949,6 +12177,10 @@
                     {
                       "name": "API_BASE_URL",
                       "value": "[parameters('apiBaseUrl')]"
+                    },
+                    {
+                      "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                      "value": "[parameters('appInsightsConnectionString')]"
                     }
                   ]
                 }
@@ -11993,6 +12225,7 @@
       },
       "dependsOn": [
         "containerApps",
+        "monitoring",
         "rg"
       ]
     },
@@ -12033,6 +12266,9 @@
           },
           "azureStorageContainerName": {
             "value": "[parameters('containerName')]"
+          },
+          "appInsightsConnectionString": {
+            "value": "[reference('monitoring').outputs.appInsightsConnectionString.value]"
           }
         },
         "template": {
@@ -12041,8 +12277,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.42.1.51946",
-              "templateHash": "3519031943903544954"
+              "version": "0.41.2.15936",
+              "templateHash": "12415906145874559868"
             }
           },
           "parameters": {
@@ -12110,6 +12346,13 @@
               "metadata": {
                 "description": "Default number of posts to create for one seed run"
               }
+            },
+            "appInsightsConnectionString": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Application Insights connection string for monitoring"
+              }
             }
           },
           "resources": [
@@ -12159,7 +12402,7 @@
                 "httpsOnly": true,
                 "siteConfig": {
                   "linuxFxVersion": "Python|3.11",
-                  "appSettings": "[concat(createArray(createObject('name', 'AzureWebJobsStorage', 'value', format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', parameters('functionsStorageAccountName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('functionsStorageAccountName')), '2025-01-01').keys[0].value)), createObject('name', 'FUNCTIONS_EXTENSION_VERSION', 'value', '~4'), createObject('name', 'FUNCTIONS_WORKER_RUNTIME', 'value', 'python'), createObject('name', 'API_BASE_URL', 'value', parameters('apiBaseUrl')), createObject('name', 'AZURE_STORAGE_ACCOUNT_URL', 'value', parameters('azureStorageAccountUrl')), createObject('name', 'AZURE_STORAGE_CONTAINER_NAME', 'value', parameters('azureStorageContainerName')), createObject('name', 'SEED_POST_COUNT', 'value', string(parameters('seedPostCount')))), createArray(createObject('name', 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING', 'value', format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', parameters('functionsStorageAccountName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('functionsStorageAccountName')), '2025-01-01').keys[0].value)), createObject('name', 'WEBSITE_CONTENTSHARE', 'value', toLower(parameters('functionAppName')))))]"
+                  "appSettings": "[concat(createArray(createObject('name', 'AzureWebJobsStorage', 'value', format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', parameters('functionsStorageAccountName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('functionsStorageAccountName')), '2025-01-01').keys[0].value)), createObject('name', 'FUNCTIONS_EXTENSION_VERSION', 'value', '~4'), createObject('name', 'FUNCTIONS_WORKER_RUNTIME', 'value', 'python'), createObject('name', 'API_BASE_URL', 'value', parameters('apiBaseUrl')), createObject('name', 'AZURE_STORAGE_ACCOUNT_URL', 'value', parameters('azureStorageAccountUrl')), createObject('name', 'AZURE_STORAGE_CONTAINER_NAME', 'value', parameters('azureStorageContainerName')), createObject('name', 'SEED_POST_COUNT', 'value', string(parameters('seedPostCount'))), createObject('name', 'APPLICATIONINSIGHTS_CONNECTION_STRING', 'value', parameters('appInsightsConnectionString'))), createArray(createObject('name', 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING', 'value', format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', parameters('functionsStorageAccountName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('functionsStorageAccountName')), '2025-01-01').keys[0].value)), createObject('name', 'WEBSITE_CONTENTSHARE', 'value', toLower(parameters('functionAppName')))))]"
                 }
               },
               "dependsOn": [
@@ -12202,6 +12445,7 @@
       },
       "dependsOn": [
         "containerApps",
+        "monitoring",
         "rg",
         "storageAccount"
       ]
@@ -12245,8 +12489,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.42.1.51946",
-              "templateHash": "7550818171237732201"
+              "version": "0.41.2.15936",
+              "templateHash": "8909825863860644804"
             }
           },
           "parameters": {
@@ -12396,6 +12640,251 @@
         "containerApps",
         "rg"
       ]
+    },
+    "alerts": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "alertsDeployment",
+      "resourceGroup": "[variables('resourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "containerAppResourceId": {
+            "value": "[reference('containerApps').outputs.containerAppResourceId.value]"
+          },
+          "postgresServerResourceId": {
+            "value": "[reference('postgres').outputs.postgresServerResourceId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "6370626621767457916"
+            }
+          },
+          "parameters": {
+            "containerAppResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Container App resource ID for alert scoping"
+              }
+            },
+            "postgresServerResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "PostgreSQL Flexible Server resource ID for alert scoping"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags to apply to alert resources"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "alert-container-restart",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "severity": 2,
+                "enabled": true,
+                "scopes": [
+                  "[parameters('containerAppResourceId')]"
+                ],
+                "evaluationFrequency": "PT1M",
+                "windowSize": "PT5M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+                  "allOf": [
+                    {
+                      "name": "RestartCount",
+                      "metricName": "RestartCount",
+                      "operator": "GreaterThan",
+                      "threshold": 3,
+                      "timeAggregation": "Total",
+                      "criterionType": "StaticThresholdCriterion"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "alert-http-5xx",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "severity": 1,
+                "enabled": true,
+                "scopes": [
+                  "[parameters('containerAppResourceId')]"
+                ],
+                "evaluationFrequency": "PT1M",
+                "windowSize": "PT5M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+                  "allOf": [
+                    {
+                      "name": "Http5xx",
+                      "metricName": "Requests",
+                      "operator": "GreaterThan",
+                      "threshold": 10,
+                      "timeAggregation": "Total",
+                      "criterionType": "StaticThresholdCriterion",
+                      "dimensions": [
+                        {
+                          "name": "statusCodeCategory",
+                          "operator": "Include",
+                          "values": [
+                            "5xx"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "alert-high-cpu",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "severity": 2,
+                "enabled": true,
+                "scopes": [
+                  "[parameters('containerAppResourceId')]"
+                ],
+                "evaluationFrequency": "PT1M",
+                "windowSize": "PT5M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+                  "allOf": [
+                    {
+                      "name": "HighCPU",
+                      "metricName": "UsageNanoCores",
+                      "operator": "GreaterThan",
+                      "threshold": 400000000,
+                      "timeAggregation": "Average",
+                      "criterionType": "StaticThresholdCriterion"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "alert-high-memory",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "severity": 2,
+                "enabled": true,
+                "scopes": [
+                  "[parameters('containerAppResourceId')]"
+                ],
+                "evaluationFrequency": "PT1M",
+                "windowSize": "PT5M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+                  "allOf": [
+                    {
+                      "name": "HighMemory",
+                      "metricName": "WorkingSetBytes",
+                      "operator": "GreaterThan",
+                      "threshold": 858993459,
+                      "timeAggregation": "Average",
+                      "criterionType": "StaticThresholdCriterion"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "alert-postgres-high-cpu",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "severity": 2,
+                "enabled": true,
+                "scopes": [
+                  "[parameters('postgresServerResourceId')]"
+                ],
+                "evaluationFrequency": "PT1M",
+                "windowSize": "PT5M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+                  "allOf": [
+                    {
+                      "name": "PostgresCPU",
+                      "metricName": "cpu_percent",
+                      "operator": "GreaterThan",
+                      "threshold": 80,
+                      "timeAggregation": "Average",
+                      "criterionType": "StaticThresholdCriterion"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "alert-postgres-storage",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "severity": 1,
+                "enabled": true,
+                "scopes": [
+                  "[parameters('postgresServerResourceId')]"
+                ],
+                "evaluationFrequency": "PT5M",
+                "windowSize": "PT15M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+                  "allOf": [
+                    {
+                      "name": "PostgresStorage",
+                      "metricName": "storage_percent",
+                      "operator": "GreaterThan",
+                      "threshold": 80,
+                      "timeAggregation": "Average",
+                      "criterionType": "StaticThresholdCriterion"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "containerApps",
+        "postgres",
+        "rg"
+      ]
     }
   },
   "outputs": {
@@ -12538,6 +13027,20 @@
         "description": "Seed Function App URL"
       },
       "value": "[reference('seedFunctions').outputs.functionAppUrl.value]"
+    },
+    "logAnalyticsWorkspaceName": {
+      "type": "string",
+      "metadata": {
+        "description": "Log Analytics workspace name"
+      },
+      "value": "[parameters('logAnalyticsWorkspaceName')]"
+    },
+    "appInsightsConnectionString": {
+      "type": "string",
+      "metadata": {
+        "description": "Application Insights connection string"
+      },
+      "value": "[reference('monitoring').outputs.appInsightsConnectionString.value]"
     }
   }
 }

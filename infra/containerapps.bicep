@@ -34,6 +34,16 @@ param azureStorageContainerName string = 'images'
 @secure()
 param postgresDatabaseUrl string
 
+@description('Log Analytics workspace resource ID for Container Apps diagnostics')
+param logAnalyticsWorkspaceId string
+
+@description('Application Insights connection string')
+param appInsightsConnectionString string = ''
+
+resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
+  name: last(split(logAnalyticsWorkspaceId, '/'))
+}
+
 resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: containerAppsEnvironmentName
   location: location
@@ -41,6 +51,13 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   properties: {
     vnetConfiguration: {
       infrastructureSubnetId: containerAppsInfrastructureSubnetResourceId
+    }
+    appLogsConfiguration: {
+      destination: 'log-analytics'
+      logAnalyticsConfiguration: {
+        customerId: logAnalyticsWorkspace.properties.customerId
+        sharedKey: logAnalyticsWorkspace.listKeys().primarySharedKey
+      }
     }
   }
 }
@@ -95,6 +112,36 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'AZURE_STORAGE_CONTAINER_NAME'
               value: azureStorageContainerName
             }
+            {
+              name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+              value: appInsightsConnectionString
+            }
+          ]
+          probes: [
+            {
+              type: 'Liveness'
+              httpGet: {
+                path: '/health'
+                port: 8080
+                scheme: 'HTTP'
+              }
+              initialDelaySeconds: 10
+              periodSeconds: 30
+              failureThreshold: 3
+              timeoutSeconds: 5
+            }
+            {
+              type: 'Readiness'
+              httpGet: {
+                path: '/health'
+                port: 8080
+                scheme: 'HTTP'
+              }
+              initialDelaySeconds: 5
+              periodSeconds: 10
+              failureThreshold: 3
+              timeoutSeconds: 5
+            }
           ]
         }
         {
@@ -133,6 +180,7 @@ resource storageBlobDataContributorAssignment 'Microsoft.Authorization/roleAssig
 }
 
 output containerAppName string = containerApp.name
+output containerAppResourceId string = containerApp.id
 output containerAppPrincipalId string = containerApp.identity.principalId
 output containerAppFqdn string = containerApp.properties.configuration.ingress.fqdn
 output containerAppUrl string = 'https://${containerApp.properties.configuration.ingress.fqdn}'
