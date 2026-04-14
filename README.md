@@ -21,14 +21,28 @@ Deploy application infrastructure (Azure Blob Storage + PostgreSQL + Container A
 script/deploy-infra
 ```
 
-After `script/deploy-infra`, perform the following before starting the app:
+> **Note:** `script/deploy-infra` deploys **infrastructure only** (resource groups, networking, Container Apps, Function App resources, etc.). Application code for Azure Functions must be deployed separately in the next step.
+
+After `script/deploy-infra`, perform the following:
 
 1. Allow network access from your execution environment to PostgreSQL and Blob Storage.
-2. Run `script/bootstrap` to create the database tables.
+2. Create database tables:
 
 ```sh
 script/bootstrap
 ```
+
+3. Deploy Function App code (MCP server + Seed function):
+
+```sh
+# MCP server
+cd mcp-server && func azure functionapp publish <FUNCTION_APP_NAME>
+
+# Seed function
+cd seed-functions && func azure functionapp publish <SEED_FUNCTION_APP_NAME> --python
+```
+
+The `<FUNCTION_APP_NAME>` and `<SEED_FUNCTION_APP_NAME>` values are printed by `script/deploy-infra` and saved to `.env`.
 
 List
 
