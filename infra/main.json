@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "6702974920267452872"
+      "templateHash": "6203856860735718387"
     },
     "description": "Deploy Azure Storage Account + Azure Database for PostgreSQL Flexible Server + Azure Container Apps for private-isu"
   },
@@ -12278,7 +12278,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "12415906145874559868"
+              "templateHash": "4561379825657845935"
             }
           },
           "parameters": {
@@ -12353,6 +12353,20 @@
               "metadata": {
                 "description": "Application Insights connection string for monitoring"
               }
+            },
+            "seedTimerSchedule": {
+              "type": "string",
+              "defaultValue": "0 0 0 * * *",
+              "metadata": {
+                "description": "Timer trigger schedule in NCRONTAB format (e.g. \"0 0 0 * * *\" = daily midnight UTC)"
+              }
+            },
+            "seedTimerDisabled": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Disable the seed timer trigger (true to disable)"
+              }
             }
           },
           "resources": [
@@ -12402,7 +12416,7 @@
                 "httpsOnly": true,
                 "siteConfig": {
                   "linuxFxVersion": "Python|3.11",
-                  "appSettings": "[concat(createArray(createObject('name', 'AzureWebJobsStorage', 'value', format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', parameters('functionsStorageAccountName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('functionsStorageAccountName')), '2025-01-01').keys[0].value)), createObject('name', 'FUNCTIONS_EXTENSION_VERSION', 'value', '~4'), createObject('name', 'FUNCTIONS_WORKER_RUNTIME', 'value', 'python'), createObject('name', 'API_BASE_URL', 'value', parameters('apiBaseUrl')), createObject('name', 'AZURE_STORAGE_ACCOUNT_URL', 'value', parameters('azureStorageAccountUrl')), createObject('name', 'AZURE_STORAGE_CONTAINER_NAME', 'value', parameters('azureStorageContainerName')), createObject('name', 'SEED_POST_COUNT', 'value', string(parameters('seedPostCount'))), createObject('name', 'APPLICATIONINSIGHTS_CONNECTION_STRING', 'value', parameters('appInsightsConnectionString'))), createArray(createObject('name', 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING', 'value', format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', parameters('functionsStorageAccountName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('functionsStorageAccountName')), '2025-01-01').keys[0].value)), createObject('name', 'WEBSITE_CONTENTSHARE', 'value', toLower(parameters('functionAppName')))))]"
+                  "appSettings": "[concat(createArray(createObject('name', 'AzureWebJobsStorage', 'value', format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', parameters('functionsStorageAccountName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('functionsStorageAccountName')), '2025-01-01').keys[0].value)), createObject('name', 'FUNCTIONS_EXTENSION_VERSION', 'value', '~4'), createObject('name', 'FUNCTIONS_WORKER_RUNTIME', 'value', 'python'), createObject('name', 'API_BASE_URL', 'value', parameters('apiBaseUrl')), createObject('name', 'AZURE_STORAGE_ACCOUNT_URL', 'value', parameters('azureStorageAccountUrl')), createObject('name', 'AZURE_STORAGE_CONTAINER_NAME', 'value', parameters('azureStorageContainerName')), createObject('name', 'SEED_POST_COUNT', 'value', string(parameters('seedPostCount'))), createObject('name', 'APPLICATIONINSIGHTS_CONNECTION_STRING', 'value', parameters('appInsightsConnectionString')), createObject('name', 'SEED_TIMER_SCHEDULE', 'value', parameters('seedTimerSchedule')), createObject('name', 'AzureWebJobs.seed_timer.Disabled', 'value', string(parameters('seedTimerDisabled')))), createArray(createObject('name', 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING', 'value', format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', parameters('functionsStorageAccountName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('functionsStorageAccountName')), '2025-01-01').keys[0].value)), createObject('name', 'WEBSITE_CONTENTSHARE', 'value', toLower(parameters('functionAppName')))))]"
                 }
               },
               "dependsOn": [

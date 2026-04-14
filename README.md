@@ -156,19 +156,23 @@ For application details and full setup guidance, see:
 - `.env.sample`: Template of supported environment variables
 - `.env`: Local environment file used for development
 
-## Seed Function (Manual Trigger)
+## Seed Function
 
 `infra/main.bicep` also deploys a seed-dedicated Function App.
-The function directly executes seed logic (users/posts/images) when `seed-now` is called.
+The function executes seed logic (users/posts/images) via four triggers.
 
-After `script/deploy-infra`, publish the seed function code:
+Each seed run appends a unique `run_id` suffix to account names (e.g. `a1b2_3e4f5a6b`), so the seed can be executed repeatedly without conflicts.
+
+### Deploy
 
 ```sh
 cd seed-functions
 func azure functionapp publish <SEED_FUNCTION_APP_NAME> --python
 ```
 
-Then trigger manually from local:
+### Triggers
+
+#### HTTP (POST /api/seed-now)
 
 ```sh
 SEED_KEY="$(az functionapp function keys list \
@@ -177,5 +181,60 @@ SEED_KEY="$(az functionapp function keys list \
   --function-name seed_now \
   --query default -o tsv)"
 
-curl -s -X POST "https://<SEED_FUNCTION_APP_NAME>.azurewebsites.net/api/seed-now?code=${SEED_KEY}" | jq .
+curl -s -X POST "https://<SEED_FUNCTION_APP_NAME>.azurewebsites.net/api/seed-now?code=${SEED_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"post_count": 50, "run_id": "mytest01"}' | jq .
+```
+
+#### Timer (scheduled)
+
+Runs on NCRONTAB schedule configured by the `SEED_TIMER_SCHEDULE` app setting (default: `0 0 0 * * *` = daily midnight UTC). **Disabled by default.**
+
+Enable:
+
+```sh
+az functionapp config appsettings set \
+  --name <SEED_FUNCTION_APP_NAME> -g <RESOURCE_GROUP> \
+  --settings "AzureWebJobs.seed_timer.Disabled=false"
+```
+
+Change schedule:
+
+```sh
+az functionapp config appsettings set \
+  --name <SEED_FUNCTION_APP_NAME> -g <RESOURCE_GROUP> \
+  --settings "SEED_TIMER_SCHEDULE=0 0 9 * * *"
+```
+
+#### Queue Storage (seed-jobs queue)
+
+Enqueue a JSON message to the `seed-jobs` queue on the Functions storage account:
+
+```sh
+az storage message put \
+  --queue-name seed-jobs \
+  --content '{"post_count": 50, "run_id": "batch01"}' \
+  --account-name <FUNCTIONS_STORAGE_ACCOUNT>
+```
+
+#### Event Grid
+
+Create an Event Grid subscription pointing to the `seed_event_grid` function. Seed parameters are read from the event `data` payload.
+
+### Parameters (all triggers)
+
+All parameters are optional. Unspecified values use environment variable defaults.
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `post_count` | Number of posts to create | `SEED_POST_COUNT` env var (100) |
+| `run_id` | Suffix appended to account names for uniqueness | Auto-generated 8-char hex |
+| `api_base_url` | Override the target API URL | `API_BASE_URL` env var |
+
+### Local Seed
+
+```sh
+script/seed                          # auto-generated run_id
+script/seed --run-id mytest01        # explicit run_id
+script/seed --post-count 50          # fewer posts
 ```

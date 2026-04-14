@@ -35,6 +35,12 @@ param seedPostCount int = 100
 @description('Application Insights connection string for monitoring')
 param appInsightsConnectionString string = ''
 
+@description('Timer trigger schedule in NCRONTAB format (e.g. "0 0 0 * * *" = daily midnight UTC)')
+param seedTimerSchedule string = '0 0 0 * * *'
+
+@description('Disable the seed timer trigger (true to disable)')
+param seedTimerDisabled bool = true
+
 var functionAppBaseSettings = [
   {
     name: 'AzureWebJobsStorage'
@@ -67,6 +73,14 @@ var functionAppBaseSettings = [
   {
     name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
     value: appInsightsConnectionString
+  }
+  {
+    name: 'SEED_TIMER_SCHEDULE'
+    value: seedTimerSchedule
+  }
+  {
+    name: 'AzureWebJobs.seed_timer.Disabled'
+    value: string(seedTimerDisabled)
   }
 ]
 var functionAppContentSettings = [
