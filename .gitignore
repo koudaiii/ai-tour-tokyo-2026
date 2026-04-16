@@ -7,3 +7,5 @@ __queuestorage__/
 AzuriteConfig
 provisioning/seed/images
 data/images
+.claude/worktrees
+.claude/settings.local.json
