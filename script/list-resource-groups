@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_TAG_KEY="GitHub Repository"
-REPO_TAG_VALUE="koudaiii/ai-tour-for-partner-2026-track4-session1"
+REPO_TAG_VALUE="koudaiii/ai-tour-tokyo-2026"
 REPO_TAG="${REPO_TAG_KEY}=${REPO_TAG_VALUE}"
 
 usage() {

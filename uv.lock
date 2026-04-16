@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.14.3"
 
 [[package]]
-name = "ai-tour-for-partner-2026-track4-session1"
+name = "ai-tour-tokyo-2026"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

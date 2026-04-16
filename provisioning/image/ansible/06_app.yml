@@ -5,7 +5,7 @@
   gather_facts: no
   vars:
     app_dir: "/home/isucon/private_isu"
-    repo_url: "https://github.com/koudaiii/ai-tour-for-partner-2026-track4-session1.git"
+    repo_url: "https://github.com/koudaiii/ai-tour-tokyo-2026.git"
   tasks:
     - name: Ensure application directory exists
       file:

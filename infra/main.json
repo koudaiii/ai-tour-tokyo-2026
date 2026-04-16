@@ -198,7 +198,7 @@
     },
     "appContainerImage": {
       "type": "string",
-      "defaultValue": "docker.io/koudaiii/ai-tour-for-partner-2026-track4-session1:latest",
+      "defaultValue": "docker.io/koudaiii/ai-tour-tokyo-2026:latest",
       "metadata": {
         "description": "Application container image (Docker Hub or ACR)"
       }

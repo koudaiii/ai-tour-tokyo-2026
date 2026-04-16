@@ -103,7 +103,7 @@ param containerAppsInfrastructureSubnetPrefix string = '10.10.0.0/23'
 param postgresPrivateEndpointSubnetPrefix string = '10.10.2.0/24'
 
 @description('Application container image (Docker Hub or ACR)')
-param appContainerImage string = 'docker.io/koudaiii/ai-tour-for-partner-2026-track4-session1:latest'
+param appContainerImage string = 'docker.io/koudaiii/ai-tour-tokyo-2026:latest'
 
 @description('Memcached sidecar container image')
 param memcachedContainerImage string = 'docker.io/library/memcached:1.6'

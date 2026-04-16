@@ -31,7 +31,7 @@ Notes:
     bench  -> Standard_F4s_v2 (4 vCPU / 8 GiB)
   - Default tags:
     CostControl=ignore, SecurityControl=ignore,
-    GitHub Repository=koudaiii/ai-tour-for-partner-2026-track4-session1
+    GitHub Repository=koudaiii/ai-tour-tokyo-2026
 EOF
 }
 
@@ -166,7 +166,7 @@ DRY_RUN=0
 TAGS=(
   "CostControl=ignore"
   "SecurityControl=ignore"
-  "GitHub Repository=koudaiii/ai-tour-for-partner-2026-track4-session1"
+  "GitHub Repository=koudaiii/ai-tour-tokyo-2026"
 )
 
 parse_args() {

@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NOW_YYYYMMDDHHMM="$(date +%Y%m%d%H%M)"
 TEMPLATE_FILE="${ROOT_DIR}/infra/main.bicep"
-TAGS_JSON='{"CostControl":"ignore","SecurityControl":"ignore","GitHub Repository":"koudaiii/ai-tour-for-partner-2026-track4-session1"}'
+TAGS_JSON='{"CostControl":"ignore","SecurityControl":"ignore","GitHub Repository":"koudaiii/ai-tour-tokyo-2026"}'
 ENV_FILE="${ROOT_DIR}/.env"
 WORKLOAD_CODE="pisu"
 DEPLOYMENT_ENVIRONMENT="sandbox"
@@ -37,7 +37,7 @@ Options:
   --postgres-storage-gb NUM   postgresStorageSizeGB parameter value (default: 32)
   --aca-env-name NAME         containerAppsEnvironmentName parameter value
   --aca-app-name NAME         containerAppName parameter value
-  --app-image IMAGE           appContainerImage parameter value (default: docker.io/koudaiii/ai-tour-for-partner-2026-track4-session1:latest)
+  --app-image IMAGE           appContainerImage parameter value (default: docker.io/koudaiii/ai-tour-tokyo-2026:latest)
   --memcached-image IMAGE     memcachedContainerImage parameter value (default: docker.io/library/memcached:1.6)
   --seed-func-app NAME        seedFunctionAppName parameter value
   --seed-func-plan NAME       seedFunctionAppServicePlanName parameter value
@@ -428,7 +428,7 @@ POSTGRES_STORAGE_GB="32"
 CONTAINER_APPS_ENVIRONMENT_NAME=""
 CONTAINER_APP_NAME=""
 VIRTUAL_NETWORK_NAME=""
-APP_CONTAINER_IMAGE="docker.io/koudaiii/ai-tour-for-partner-2026-track4-session1:latest"
+APP_CONTAINER_IMAGE="docker.io/koudaiii/ai-tour-tokyo-2026:latest"
 MEMCACHED_CONTAINER_IMAGE="docker.io/library/memcached:1.6"
 FUNCTION_APP_NAME=""
 FUNCTION_APP_SERVICE_PLAN_NAME=""
