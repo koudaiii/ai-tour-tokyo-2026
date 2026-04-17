@@ -14,10 +14,10 @@ import app as app_module
 NOW = datetime.datetime(2025, 1, 15, 12, 0, 0)
 
 
-def _make_user(id=1, account_name="alice", del_flg=0):
+def _make_user(id=1, account_id="alice", del_flg=0):
     return {
         "id": id,
-        "account_name": account_name,
+        "account_id": account_id,
         "del_flg": del_flg,
         "authority": 0,
         "created_at": NOW,
@@ -80,6 +80,63 @@ def client(monkeypatch):
     app.config["SECRET_KEY"] = "test-secret"
     app.session_interface = SecureCookieSessionInterface()
     return app.test_client()
+
+
+# ---- POST /login ----
+
+
+def test_post_login_uses_account_id_field(client, monkeypatch):
+    captured = {}
+
+    def fake_try_login(account_id, password):
+        captured["account_id"] = account_id
+        captured["password"] = password
+        return {"id": 42}
+
+    monkeypatch.setattr(app_module, "get_session_user", lambda: None)
+    monkeypatch.setattr(app_module, "try_login", fake_try_login)
+
+    resp = client.post(
+        "/login",
+        data={"account_id": "alice", "password": "secret123"},
+    )
+
+    assert resp.status_code == 302
+    assert captured == {"account_id": "alice", "password": "secret123"}
+
+
+# ---- POST /register ----
+
+
+def test_post_register_uses_account_id_column(client, monkeypatch):
+    fake_cursor = FakeCursor(results=[None, {"id": 123}])
+    monkeypatch.setattr(app_module, "get_session_user", lambda: None)
+    monkeypatch.setattr(app_module, "db", lambda: FakeDB(fake_cursor))
+
+    resp = client.post(
+        "/register",
+        data={"account_id": "new_user", "password": "secret123"},
+    )
+
+    assert resp.status_code == 302
+    assert "account_id" in fake_cursor.execute_calls[0][0]
+    assert fake_cursor.execute_calls[0][1] == ("new_user",)
+    assert "INSERT INTO users (account_id, passhash)" in fake_cursor.execute_calls[1][0]
+    assert fake_cursor.execute_calls[1][1][0] == "new_user"
+
+
+# ---- Serialization ----
+
+
+def test_post_to_dict_uses_account_id_key(monkeypatch):
+    post = _make_post()
+    monkeypatch.setattr(app_module, "get_blob_url", lambda key: None)
+
+    data = app_module._post_to_dict(post)
+
+    assert "account_id" in data["user"]
+    assert data["user"]["account_id"] == "alice"
+    assert "account_name" not in data["user"]
 
 
 # ---- GET /api/posts ----
@@ -287,7 +344,7 @@ def test_api_create_comment_success(client, monkeypatch):
 
 
 def test_api_get_users(client, monkeypatch):
-    users = [_make_user(id=1, account_name="alice"), _make_user(id=2, account_name="bob")]
+    users = [_make_user(id=1, account_id="alice"), _make_user(id=2, account_id="bob")]
     fake_cursor = FakeCursor(results=[users])
     monkeypatch.setattr(app_module, "db", lambda: FakeDB(fake_cursor))
 
@@ -295,15 +352,15 @@ def test_api_get_users(client, monkeypatch):
     assert resp.status_code == 200
     data = resp.get_json()
     assert len(data["users"]) == 2
-    assert data["users"][0]["account_name"] == "alice"
-    assert data["users"][1]["account_name"] == "bob"
+    assert data["users"][0]["account_id"] == "alice"
+    assert data["users"][1]["account_id"] == "bob"
 
 
-# ---- GET /api/users/<account_name> ----
+# ---- GET /api/users/<account_id> ----
 
 
 def test_api_get_user_found(client, monkeypatch):
-    user = _make_user(id=10, account_name="mary")
+    user = _make_user(id=10, account_id="mary")
     monkeypatch.setattr(app_module, "_get_user_or_404", lambda name: user if name == "mary" else None)
 
     fake_cursor = FakeCursor(results=[
@@ -316,7 +373,7 @@ def test_api_get_user_found(client, monkeypatch):
     resp = client.get("/api/users/mary")
     assert resp.status_code == 200
     data = resp.get_json()
-    assert data["user"]["account_name"] == "mary"
+    assert data["user"]["account_id"] == "mary"
     assert data["post_count"] == 2
     assert data["comment_count"] == 5
     assert data["commented_count"] == 3
@@ -330,11 +387,11 @@ def test_api_get_user_not_found(client, monkeypatch):
     assert resp.get_json()["error"] == "not found"
 
 
-# ---- GET /api/users/<account_name>/posts ----
+# ---- GET /api/users/<account_id>/posts ----
 
 
 def test_api_get_user_posts(client, monkeypatch):
-    user = _make_user(id=10, account_name="mary")
+    user = _make_user(id=10, account_id="mary")
     post = _make_post(id=1, user_id=10, user=user)
     monkeypatch.setattr(app_module, "_get_user_or_404", lambda name: user if name == "mary" else None)
     monkeypatch.setattr(app_module, "make_posts", lambda results, **kw: [post])
@@ -347,7 +404,7 @@ def test_api_get_user_posts(client, monkeypatch):
     assert resp.status_code == 200
     data = resp.get_json()
     assert len(data["posts"]) == 1
-    assert data["posts"][0]["user"]["account_name"] == "mary"
+    assert data["posts"][0]["user"]["account_id"] == "mary"
 
 
 def test_api_get_user_posts_user_not_found(client, monkeypatch):
@@ -357,11 +414,11 @@ def test_api_get_user_posts_user_not_found(client, monkeypatch):
     assert resp.status_code == 404
 
 
-# ---- GET /api/users/<account_name>/posts/<id> ----
+# ---- GET /api/users/<account_id>/posts/<id> ----
 
 
 def test_api_get_user_post_found(client, monkeypatch):
-    user = _make_user(id=10, account_name="mary")
+    user = _make_user(id=10, account_id="mary")
     post = _make_post(id=7, user_id=10, user=user)
     monkeypatch.setattr(app_module, "_get_user_or_404", lambda name: user if name == "mary" else None)
     monkeypatch.setattr(app_module, "make_posts", lambda results, **kw: [post])
@@ -377,7 +434,7 @@ def test_api_get_user_post_found(client, monkeypatch):
 
 
 def test_api_get_user_post_not_found(client, monkeypatch):
-    user = _make_user(id=10, account_name="mary")
+    user = _make_user(id=10, account_id="mary")
     monkeypatch.setattr(app_module, "_get_user_or_404", lambda name: user if name == "mary" else None)
     monkeypatch.setattr(app_module, "make_posts", lambda results, **kw: [])
 

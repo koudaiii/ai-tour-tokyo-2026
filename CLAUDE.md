@@ -55,7 +55,7 @@ The application is intentionally designed with performance issues:
 
 ### Database Schema
 Main tables (PostgreSQL, defined in `sql/bootstrap_create_table.sql`):
-- `users`: id (SERIAL), account_name, passhash, authority, del_flg, created_at
+- `users`: id (SERIAL), account_id, passhash, authority, del_flg, created_at
 - `posts`: id (SERIAL), user_id, mime, imgdata (bytea), body, created_at
 - `comments`: id (SERIAL), post_id, user_id, comment, created_at
 

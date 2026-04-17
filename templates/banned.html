@@ -4,7 +4,7 @@
   <form method="post" action="/admin/banned">
     {% for u in users %}
     <div>
-      <input type="checkbox" name="uid[]" id="uid_{{ u.id }}" value="{{ u.id }}" data-account-name="{{ u.account_name }}"> <label for="uid_{{ u.id }}">{{ u.account_name }}</label>
+      <input type="checkbox" name="uid[]" id="uid_{{ u.id }}" value="{{ u.id }}" data-account-id="{{ u.account_id }}"> <label for="uid_{{ u.id }}">{{ u.account_id }}</label>
     </div>
     {% endfor %}
     <div class="form-submit">

@@ -4,7 +4,7 @@ DROP TABLE IF EXISTS users;
 
 CREATE TABLE users (
   id SERIAL PRIMARY KEY,
-  account_name varchar(64) NOT NULL UNIQUE,
+  account_id varchar(64) NOT NULL UNIQUE,
   passhash varchar(128) NOT NULL,
   authority smallint NOT NULL DEFAULT 0,
   del_flg smallint NOT NULL DEFAULT 0,

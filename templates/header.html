@@ -6,7 +6,7 @@
     {% if not me %}
     <div><a href="/login">ログイン</a></div>
     {% else %}
-    <div><a href="{{ me['account_name'] }}"><span class="isu-account-name">{{ me['account_name'] }}</span>さん</a></div>
+    <div><a href="/@{{ me['account_id'] }}"><span class="isu-account-name">{{ me['account_id'] }}</span>さん</a></div>
     {% if me['authority'] == 1 %}
     <div><a href="/admin/banned">管理者用ページ</a></div>
     {% endif %}

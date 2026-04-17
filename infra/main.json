@@ -5,8 +5,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.41.2.15936",
-      "templateHash": "6203856860735718387"
+      "version": "0.42.1.51946",
+      "templateHash": "4966725175506903827"
     },
     "description": "Deploy Azure Storage Account + Azure Database for PostgreSQL Flexible Server + Azure Container Apps for private-isu"
   },
@@ -359,8 +359,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "311804865726027998"
+              "version": "0.42.1.51946",
+              "templateHash": "14514040674218283620"
             }
           },
           "parameters": {
@@ -519,8 +519,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "394470703911171080"
+              "version": "0.42.1.51946",
+              "templateHash": "14463625585171880377"
             }
           },
           "parameters": {
@@ -8850,8 +8850,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "2116989671178580162"
+              "version": "0.42.1.51946",
+              "templateHash": "7306985940444065235"
             }
           },
           "parameters": {
@@ -11752,8 +11752,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "13940810490400997174"
+              "version": "0.42.1.51946",
+              "templateHash": "1004829336187905747"
             }
           },
           "parameters": {
@@ -12057,8 +12057,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "5481282077744456462"
+              "version": "0.42.1.51946",
+              "templateHash": "12731099803968589581"
             }
           },
           "parameters": {
@@ -12277,8 +12277,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "4561379825657845935"
+              "version": "0.42.1.51946",
+              "templateHash": "17665123748392417764"
             }
           },
           "parameters": {
@@ -12503,8 +12503,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "8909825863860644804"
+              "version": "0.42.1.51946",
+              "templateHash": "8077129958754229734"
             }
           },
           "parameters": {
@@ -12561,7 +12561,7 @@
             }
           },
           "variables": {
-            "$fxv#0": "openapi: 3.0.3\ninfo:\n  title: Private ISU API\n  description: REST JSON API for the Private ISU social media application.\n  version: \"1.0.0\"\nservers:\n  - url: http://localhost:8080\npaths:\n  /api/posts:\n    get:\n      operationId: getPosts\n      summary: List timeline posts\n      parameters:\n        - name: max_created_at\n          in: query\n          required: false\n          description: ISO 8601 datetime for pagination (returns posts created at or before this time)\n          schema:\n            type: string\n            format: date-time\n      responses:\n        \"200\":\n          description: A list of posts\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  posts:\n                    type: array\n                    items:\n                      $ref: \"#/components/schemas/Post\"\n    post:\n      operationId: createPost\n      summary: Create a new post with an image\n      requestBody:\n        required: true\n        content:\n          multipart/form-data:\n            schema:\n              type: object\n              required:\n                - file\n                - csrf_token\n              properties:\n                file:\n                  type: string\n                  format: binary\n                  description: Image file (JPEG, PNG, or GIF)\n                body:\n                  type: string\n                  description: Post body text\n                csrf_token:\n                  type: string\n      responses:\n        \"201\":\n          description: Post created\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  id:\n                    type: integer\n        \"400\":\n          $ref: \"#/components/responses/BadRequest\"\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"422\":\n          $ref: \"#/components/responses/InvalidCsrf\"\n\n  /api/posts/{id}:\n    get:\n      operationId: getPost\n      summary: Get a single post with all comments\n      parameters:\n        - $ref: \"#/components/parameters/PostId\"\n      responses:\n        \"200\":\n          description: Post detail\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  post:\n                    $ref: \"#/components/schemas/Post\"\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n\n  /api/comments:\n    post:\n      operationId: createComment\n      summary: Add a comment to a post\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              type: object\n              required:\n                - post_id\n                - comment\n                - csrf_token\n              properties:\n                post_id:\n                  type: integer\n                comment:\n                  type: string\n                csrf_token:\n                  type: string\n      responses:\n        \"201\":\n          description: Comment created\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  post_id:\n                    type: integer\n        \"400\":\n          $ref: \"#/components/responses/BadRequest\"\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"422\":\n          $ref: \"#/components/responses/InvalidCsrf\"\n\n  /api/users:\n    get:\n      operationId: getUsers\n      summary: List all active users\n      responses:\n        \"200\":\n          description: A list of users\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  users:\n                    type: array\n                    items:\n                      $ref: \"#/components/schemas/UserSummary\"\n\n  /api/users/{account_name}:\n    get:\n      operationId: getUser\n      summary: Get user profile with stats\n      parameters:\n        - $ref: \"#/components/parameters/AccountName\"\n      responses:\n        \"200\":\n          description: User profile\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  user:\n                    $ref: \"#/components/schemas/UserSummary\"\n                  post_count:\n                    type: integer\n                  comment_count:\n                    type: integer\n                    description: Number of comments the user has written\n                  commented_count:\n                    type: integer\n                    description: Number of comments on the user's posts\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n\n  /api/users/{account_name}/posts:\n    get:\n      operationId: getUserPosts\n      summary: List posts by a specific user\n      parameters:\n        - $ref: \"#/components/parameters/AccountName\"\n      responses:\n        \"200\":\n          description: A list of the user's posts\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  posts:\n                    type: array\n                    items:\n                      $ref: \"#/components/schemas/Post\"\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n\n  /api/users/{account_name}/posts/{id}:\n    get:\n      operationId: getUserPost\n      summary: Get a specific post by a user with all comments\n      parameters:\n        - $ref: \"#/components/parameters/AccountName\"\n        - $ref: \"#/components/parameters/PostId\"\n      responses:\n        \"200\":\n          description: Post detail\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  post:\n                    $ref: \"#/components/schemas/Post\"\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n\ncomponents:\n  parameters:\n    AccountName:\n      name: account_name\n      in: path\n      required: true\n      schema:\n        type: string\n    PostId:\n      name: id\n      in: path\n      required: true\n      schema:\n        type: integer\n\n  schemas:\n    UserSummary:\n      type: object\n      properties:\n        id:\n          type: integer\n        account_name:\n          type: string\n        created_at:\n          type: string\n          format: date-time\n\n    Comment:\n      type: object\n      properties:\n        id:\n          type: integer\n        comment:\n          type: string\n        user:\n          $ref: \"#/components/schemas/UserSummary\"\n        created_at:\n          type: string\n          format: date-time\n\n    Post:\n      type: object\n      properties:\n        id:\n          type: integer\n        user:\n          $ref: \"#/components/schemas/UserSummary\"\n        body:\n          type: string\n        mime:\n          type: string\n        image_url:\n          type: string\n        created_at:\n          type: string\n          format: date-time\n        comment_count:\n          type: integer\n        comments:\n          type: array\n          items:\n            $ref: \"#/components/schemas/Comment\"\n\n    Error:\n      type: object\n      properties:\n        error:\n          type: string\n\n  responses:\n    NotFound:\n      description: Resource not found\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n    BadRequest:\n      description: Bad request\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n    Unauthorized:\n      description: Authentication required\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n    InvalidCsrf:\n      description: Invalid CSRF token\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n"
+            "$fxv#0": "openapi: 3.0.3\ninfo:\n  title: Private ISU API\n  description: REST JSON API for the Private ISU social media application.\n  version: \"1.0.0\"\nservers:\n  - url: http://localhost:8080\npaths:\n  /api/posts:\n    get:\n      operationId: getPosts\n      summary: List timeline posts\n      parameters:\n        - name: max_created_at\n          in: query\n          required: false\n          description: ISO 8601 datetime for pagination (returns posts created at or before this time)\n          schema:\n            type: string\n            format: date-time\n      responses:\n        \"200\":\n          description: A list of posts\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  posts:\n                    type: array\n                    items:\n                      $ref: \"#/components/schemas/Post\"\n    post:\n      operationId: createPost\n      summary: Create a new post with an image\n      requestBody:\n        required: true\n        content:\n          multipart/form-data:\n            schema:\n              type: object\n              required:\n                - file\n                - csrf_token\n              properties:\n                file:\n                  type: string\n                  format: binary\n                  description: Image file (JPEG, PNG, or GIF)\n                body:\n                  type: string\n                  description: Post body text\n                csrf_token:\n                  type: string\n      responses:\n        \"201\":\n          description: Post created\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  id:\n                    type: integer\n        \"400\":\n          $ref: \"#/components/responses/BadRequest\"\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"422\":\n          $ref: \"#/components/responses/InvalidCsrf\"\n\n  /api/posts/{id}:\n    get:\n      operationId: getPost\n      summary: Get a single post with all comments\n      parameters:\n        - $ref: \"#/components/parameters/PostId\"\n      responses:\n        \"200\":\n          description: Post detail\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  post:\n                    $ref: \"#/components/schemas/Post\"\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n\n  /api/comments:\n    post:\n      operationId: createComment\n      summary: Add a comment to a post\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              type: object\n              required:\n                - post_id\n                - comment\n                - csrf_token\n              properties:\n                post_id:\n                  type: integer\n                comment:\n                  type: string\n                csrf_token:\n                  type: string\n      responses:\n        \"201\":\n          description: Comment created\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  post_id:\n                    type: integer\n        \"400\":\n          $ref: \"#/components/responses/BadRequest\"\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"422\":\n          $ref: \"#/components/responses/InvalidCsrf\"\n\n  /api/users:\n    get:\n      operationId: getUsers\n      summary: List all active users\n      responses:\n        \"200\":\n          description: A list of users\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  users:\n                    type: array\n                    items:\n                      $ref: \"#/components/schemas/UserSummary\"\n\n  /api/users/{account_id}:\n    get:\n      operationId: getUser\n      summary: Get user profile with stats\n      parameters:\n        - $ref: \"#/components/parameters/AccountId\"\n      responses:\n        \"200\":\n          description: User profile\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  user:\n                    $ref: \"#/components/schemas/UserSummary\"\n                  post_count:\n                    type: integer\n                  comment_count:\n                    type: integer\n                    description: Number of comments the user has written\n                  commented_count:\n                    type: integer\n                    description: Number of comments on the user's posts\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n\n  /api/users/{account_id}/posts:\n    get:\n      operationId: getUserPosts\n      summary: List posts by a specific user\n      parameters:\n        - $ref: \"#/components/parameters/AccountId\"\n      responses:\n        \"200\":\n          description: A list of the user's posts\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  posts:\n                    type: array\n                    items:\n                      $ref: \"#/components/schemas/Post\"\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n\n  /api/users/{account_id}/posts/{id}:\n    get:\n      operationId: getUserPost\n      summary: Get a specific post by a user with all comments\n      parameters:\n        - $ref: \"#/components/parameters/AccountId\"\n        - $ref: \"#/components/parameters/PostId\"\n      responses:\n        \"200\":\n          description: Post detail\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  post:\n                    $ref: \"#/components/schemas/Post\"\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n\ncomponents:\n  parameters:\n    AccountId:\n      name: account_id\n      in: path\n      required: true\n      schema:\n        type: string\n    PostId:\n      name: id\n      in: path\n      required: true\n      schema:\n        type: integer\n\n  schemas:\n    UserSummary:\n      type: object\n      properties:\n        id:\n          type: integer\n        account_id:\n          type: string\n        created_at:\n          type: string\n          format: date-time\n\n    Comment:\n      type: object\n      properties:\n        id:\n          type: integer\n        comment:\n          type: string\n        user:\n          $ref: \"#/components/schemas/UserSummary\"\n        created_at:\n          type: string\n          format: date-time\n\n    Post:\n      type: object\n      properties:\n        id:\n          type: integer\n        user:\n          $ref: \"#/components/schemas/UserSummary\"\n        body:\n          type: string\n        mime:\n          type: string\n        image_url:\n          type: string\n        created_at:\n          type: string\n          format: date-time\n        comment_count:\n          type: integer\n        comments:\n          type: array\n          items:\n            $ref: \"#/components/schemas/Comment\"\n\n    Error:\n      type: object\n      properties:\n        error:\n          type: string\n\n  responses:\n    NotFound:\n      description: Resource not found\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n    BadRequest:\n      description: Bad request\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n    Unauthorized:\n      description: Authentication required\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n    InvalidCsrf:\n      description: Invalid CSRF token\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n"
           },
           "resources": [
             {
@@ -12682,8 +12682,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "6370626621767457916"
+              "version": "0.42.1.51946",
+              "templateHash": "9637977787286080226"
             }
           },
           "parameters": {

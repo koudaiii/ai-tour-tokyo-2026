@@ -30,8 +30,8 @@ def generate_run_id() -> str:
     return uuid.uuid4().hex[:SEED_RUN_ID_LENGTH]
 
 
-def make_seed_account_name(base_name: str, run_id: str) -> str:
-    return f"{base_name}_{run_id}"
+def make_seed_account_id(base_id: str, run_id: str) -> str:
+    return f"{base_id}_{run_id}"
 
 _blob_service_client = None
 
@@ -51,12 +51,12 @@ def digest(src: str) -> str:
     return out.strip()
 
 
-def calculate_salt(account_name: str) -> str:
-    return digest(account_name)
+def calculate_salt(account_id: str) -> str:
+    return digest(account_id)
 
 
-def calculate_passhash(account_name: str, password: str) -> str:
-    return digest(f"{password}:{calculate_salt(account_name)}")
+def calculate_passhash(account_id: str, password: str) -> str:
+    return digest(f"{password}:{calculate_salt(account_id)}")
 
 
 def resolve_database_url() -> str:
@@ -165,22 +165,23 @@ def run_seed(
         with conn.cursor() as cur:
             user_ids: list[int] = []
             for entry in users_data:
-                account_name = make_seed_account_name(entry.get("account_name"), run_id)
+                base_account_id = entry.get("account_id") or entry.get("account_name")
+                account_id = make_seed_account_id(base_account_id, run_id)
                 password = entry.get("password")
-                if not account_name or not password:
+                if not account_id or not password:
                     raise ValueError(
-                        f"Each user entry must have account_name/password: {entry}"
+                        f"Each user entry must have account_id/password: {entry}"
                     )
-                passhash = calculate_passhash(account_name, password)
+                passhash = calculate_passhash(account_id, password)
                 cur.execute(
                     """
-                    INSERT INTO users (account_name, passhash, del_flg)
+                    INSERT INTO users (account_id, passhash, del_flg)
                     VALUES (%s, %s, 0)
-                    ON CONFLICT (account_name)
+                    ON CONFLICT (account_id)
                     DO UPDATE SET passhash = EXCLUDED.passhash, del_flg = 0
                     RETURNING id
                     """,
-                    (account_name, passhash),
+                    (account_id, passhash),
                 )
                 user_ids.append(cur.fetchone()[0])
 

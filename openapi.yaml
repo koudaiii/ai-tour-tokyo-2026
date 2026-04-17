@@ -143,12 +143,12 @@ paths:
                     items:
                       $ref: "#/components/schemas/UserSummary"
 
-  /api/users/{account_name}:
+  /api/users/{account_id}:
     get:
       operationId: getUser
       summary: Get user profile with stats
       parameters:
-        - $ref: "#/components/parameters/AccountName"
+        - $ref: "#/components/parameters/AccountId"
       responses:
         "200":
           description: User profile
@@ -170,12 +170,12 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /api/users/{account_name}/posts:
+  /api/users/{account_id}/posts:
     get:
       operationId: getUserPosts
       summary: List posts by a specific user
       parameters:
-        - $ref: "#/components/parameters/AccountName"
+        - $ref: "#/components/parameters/AccountId"
       responses:
         "200":
           description: A list of the user's posts
@@ -191,12 +191,12 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /api/users/{account_name}/posts/{id}:
+  /api/users/{account_id}/posts/{id}:
     get:
       operationId: getUserPost
       summary: Get a specific post by a user with all comments
       parameters:
-        - $ref: "#/components/parameters/AccountName"
+        - $ref: "#/components/parameters/AccountId"
         - $ref: "#/components/parameters/PostId"
       responses:
         "200":
@@ -213,8 +213,8 @@ paths:
 
 components:
   parameters:
-    AccountName:
-      name: account_name
+    AccountId:
+      name: account_id
       in: path
       required: true
       schema:
@@ -232,7 +232,7 @@ components:
       properties:
         id:
           type: integer
-        account_name:
+        account_id:
           type: string
         created_at:
           type: string

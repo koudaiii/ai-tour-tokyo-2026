@@ -96,12 +96,12 @@ def browse_timeline(context: str) -> str:
     for p in posts:
         digest.append({
             "id": p["id"],
-            "author": p["user"]["account_name"],
+            "author": p["user"]["account_id"],
             "body_preview": (p["body"] or "")[:120],
             "image_url": p.get("image_url"),
             "comment_count": p["comment_count"],
             "latest_commenters": list({
-                c["user"]["account_name"] for c in (p.get("comments") or [])
+                c["user"]["account_id"] for c in (p.get("comments") or [])
             }),
             "created_at": p["created_at"],
         })
@@ -128,20 +128,20 @@ def browse_timeline(context: str) -> str:
     ),
     tool_properties=json.dumps([
         {
-            "propertyName": "account_name",
+            "propertyName": "account_id",
             "propertyType": "string",
-            "description": "The account name of the user to explore",
+            "description": "The account ID of the user to explore",
             "isRequired": True,
         },
     ]),
 )
 def explore_user(context: str) -> str:
     args = _parse_args(context)
-    account_name = args.get("account_name")
-    if not account_name:
-        return json.dumps({"error": "account_name is required"})
+    account_id = args.get("account_id")
+    if not account_id:
+        return json.dumps({"error": "account_id is required"})
 
-    safe_name = urllib.parse.quote(account_name)
+    safe_name = urllib.parse.quote(account_id)
 
     try:
         profile = _api_get(f"/api/users/{safe_name}")
@@ -227,12 +227,12 @@ def find_popular_posts(context: str) -> str:
     for p in posts:
         results.append({
             "id": p["id"],
-            "author": p["user"]["account_name"],
+            "author": p["user"]["account_id"],
             "body_preview": (p["body"] or "")[:120],
             "image_url": p.get("image_url"),
             "comment_count": p["comment_count"],
             "commenters": list({
-                c["user"]["account_name"] for c in (p.get("comments") or [])
+                c["user"]["account_id"] for c in (p.get("comments") or [])
             }),
             "created_at": p["created_at"],
         })
@@ -281,7 +281,7 @@ def get_conversation(context: str) -> str:
     thread = []
     thread.append({
         "type": "post",
-        "author": post["user"]["account_name"],
+        "author": post["user"]["account_id"],
         "body": post["body"],
         "image_url": post.get("image_url"),
         "created_at": post["created_at"],
@@ -290,7 +290,7 @@ def get_conversation(context: str) -> str:
     for c in post.get("comments", []):
         thread.append({
             "type": "comment",
-            "author": c["user"]["account_name"],
+            "author": c["user"]["account_id"],
             "body": c["comment"],
             "created_at": c["created_at"],
         })
@@ -315,20 +315,20 @@ def get_conversation(context: str) -> str:
     ),
     tool_properties=json.dumps([
         {
-            "propertyName": "account_names",
+            "propertyName": "account_ids",
             "propertyType": "string",
-            "description": "Comma-separated list of account names to compare (2-5 users)",
+            "description": "Comma-separated list of account IDs to compare (2-5 users)",
             "isRequired": True,
         },
     ]),
 )
 def compare_users(context: str) -> str:
     args = _parse_args(context)
-    raw = args.get("account_names", "")
+    raw = args.get("account_ids", "")
     names = [n.strip() for n in raw.split(",") if n.strip()]
 
     if len(names) < 2:
-        return json.dumps({"error": "Provide at least 2 account names separated by commas"})
+        return json.dumps({"error": "Provide at least 2 account IDs separated by commas"})
     if len(names) > 5:
         names = names[:5]
 
@@ -338,7 +338,7 @@ def compare_users(context: str) -> str:
         try:
             profile = _api_get(f"/api/users/{safe}")
             comparisons.append({
-                "account_name": name,
+                "account_id": name,
                 "post_count": profile.get("post_count", 0),
                 "comment_count": profile.get("comment_count", 0),
                 "commented_count": profile.get("commented_count", 0),
@@ -346,7 +346,7 @@ def compare_users(context: str) -> str:
             })
         except urllib.error.HTTPError:
             comparisons.append({
-                "account_name": name,
+                "account_id": name,
                 "error": "user not found",
             })
 
@@ -409,11 +409,11 @@ def search_posts(context: str) -> str:
             comment_text = (c.get("comment") or "").lower()
             if query in comment_text:
                 score += 3
-            commenter = (c.get("user", {}).get("account_name") or "").lower()
+            commenter = (c.get("user", {}).get("account_id") or "").lower()
             if query in commenter:
                 score += 1
 
-        author = (p.get("user", {}).get("account_name") or "").lower()
+        author = (p.get("user", {}).get("account_id") or "").lower()
         if query in author:
             score += 5
 
@@ -428,7 +428,7 @@ def search_posts(context: str) -> str:
         results.append({
             "id": p["id"],
             "relevance_score": score,
-            "author": p["user"]["account_name"],
+            "author": p["user"]["account_id"],
             "body_preview": (p["body"] or "")[:200],
             "image_url": p.get("image_url"),
             "comment_count": p["comment_count"],

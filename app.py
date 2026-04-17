@@ -142,20 +142,20 @@ def memcache():
     return _mcclient
 
 
-def try_login(account_name, password):
+def try_login(account_id, password):
     cur = db().cursor()
     cur.execute(
-        "SELECT * FROM users WHERE account_name = %s AND del_flg = 0", (account_name,)
+        "SELECT * FROM users WHERE account_id = %s AND del_flg = 0", (account_id,)
     )
     user = cur.fetchone()
 
-    if user and calculate_passhash(user["account_name"], password) == user["passhash"]:
+    if user and calculate_passhash(user["account_id"], password) == user["passhash"]:
         return user
     return None
 
 
-def validate_user(account_name: str, password: str):
-    if not re.fullmatch(r"[0-9a-zA-Z_]{3,}", account_name):
+def validate_user(account_id: str, password: str):
+    if not re.fullmatch(r"[0-9a-zA-Z_]{3,}", account_id):
         return False
     if not re.fullmatch(r"[0-9a-zA-Z_]{6,}", password):
         return False
@@ -172,12 +172,12 @@ def digest(src: str):
     return out.strip()
 
 
-def calculate_salt(account_name: str):
-    return digest(account_name)
+def calculate_salt(account_id: str):
+    return digest(account_id)
 
 
-def calculate_passhash(account_name: str, password: str):
-    return digest("%s:%s" % (password, calculate_salt(account_name)))
+def calculate_passhash(account_id: str, password: str):
+    return digest("%s:%s" % (password, calculate_salt(account_id)))
 
 
 def get_session_user():
@@ -298,13 +298,13 @@ def post_login():
     if get_session_user():
         return flask.redirect("/")
 
-    user = try_login(flask.request.form["account_name"], flask.request.form["password"])
+    user = try_login(flask.request.form["account_id"], flask.request.form["password"])
     if user:
         flask.session["user"] = {"id": user["id"]}
         flask.session["csrf_token"] = os.urandom(16).hex()
         return flask.redirect("/")
 
-    flask.flash("アカウント名かパスワードが間違っています")
+    flask.flash("アカウントIDかパスワードが間違っています")
     return flask.redirect("/login")
 
 
@@ -320,23 +320,23 @@ def post_register():
     if get_session_user():
         return flask.redirect("/")
 
-    account_name = flask.request.form["account_name"]
+    account_id = flask.request.form["account_id"]
     password = flask.request.form["password"]
-    if not validate_user(account_name, password):
+    if not validate_user(account_id, password):
         flask.flash(
-            "アカウント名は3文字以上、パスワードは6文字以上である必要があります"
+            "アカウントIDは3文字以上、パスワードは6文字以上である必要があります"
         )
         return flask.redirect("/register")
 
     cursor = db().cursor()
-    cursor.execute("SELECT 1 FROM users WHERE account_name = %s", (account_name,))
+    cursor.execute("SELECT 1 FROM users WHERE account_id = %s", (account_id,))
     user = cursor.fetchone()
     if user:
-        flask.flash("アカウント名がすでに使われています")
+        flask.flash("アカウントIDがすでに使われています")
         return flask.redirect("/register")
 
-    query = "INSERT INTO users (account_name, passhash) VALUES (%s, %s) RETURNING id"
-    cursor.execute(query, (account_name, calculate_passhash(account_name, password)))
+    query = "INSERT INTO users (account_id, passhash) VALUES (%s, %s) RETURNING id"
+    cursor.execute(query, (account_id, calculate_passhash(account_id, password)))
 
     flask.session["user"] = {"id": cursor.fetchone()["id"]}
     flask.session["csrf_token"] = os.urandom(16).hex()
@@ -362,13 +362,13 @@ def get_index():
     return flask.render_template("index.html", posts=posts, me=me)
 
 
-@app.route("/@<account_name>")
-def get_user_list(account_name):
+@app.route("/@<account_id>")
+def get_user_list(account_id):
     cursor = db().cursor()
 
     cursor.execute(
-        "SELECT * FROM users WHERE account_name = %s AND del_flg = 0",
-        (account_name,),
+        "SELECT * FROM users WHERE account_id = %s AND del_flg = 0",
+        (account_id,),
     )
     user = cursor.fetchone()
     if user is None:
@@ -617,7 +617,7 @@ def _post_to_dict(post):
         "id": post["id"],
         "user": {
             "id": post["user"]["id"],
-            "account_name": post["user"]["account_name"],
+            "account_id": post["user"]["account_id"],
         },
         "body": post["body"],
         "mime": post["mime"],
@@ -630,7 +630,7 @@ def _post_to_dict(post):
                 "comment": c["comment"],
                 "user": {
                     "id": c["user"]["id"],
-                    "account_name": c["user"]["account_name"],
+                    "account_id": c["user"]["account_id"],
                 },
                 "created_at": c["created_at"].isoformat(),
             }
@@ -639,11 +639,11 @@ def _post_to_dict(post):
     }
 
 
-def _get_user_or_404(account_name):
+def _get_user_or_404(account_id):
     cursor = db().cursor()
     cursor.execute(
-        "SELECT * FROM users WHERE account_name = %s AND del_flg = 0",
-        (account_name,),
+        "SELECT * FROM users WHERE account_id = %s AND del_flg = 0",
+        (account_id,),
     )
     return cursor.fetchone()
 
@@ -759,12 +759,12 @@ def api_create_comment():
 def api_get_users():
     cursor = db().cursor()
     cursor.execute(
-        "SELECT id, account_name, created_at FROM users WHERE del_flg = 0 ORDER BY created_at DESC"
+        "SELECT id, account_id, created_at FROM users WHERE del_flg = 0 ORDER BY created_at DESC"
     )
     users = [
         {
             "id": u["id"],
-            "account_name": u["account_name"],
+            "account_id": u["account_id"],
             "created_at": u["created_at"].isoformat(),
         }
         for u in cursor.fetchall()
@@ -772,9 +772,9 @@ def api_get_users():
     return flask.jsonify({"users": users})
 
 
-@app.route("/api/users/<account_name>")
-def api_get_user(account_name):
-    user = _get_user_or_404(account_name)
+@app.route("/api/users/<account_id>")
+def api_get_user(account_id):
+    user = _get_user_or_404(account_id)
     if user is None:
         return flask.jsonify({"error": "not found"}), 404
 
@@ -800,7 +800,7 @@ def api_get_user(account_name):
     return flask.jsonify({
         "user": {
             "id": user["id"],
-            "account_name": user["account_name"],
+            "account_id": user["account_id"],
             "created_at": user["created_at"].isoformat(),
         },
         "post_count": post_count,
@@ -809,9 +809,9 @@ def api_get_user(account_name):
     })
 
 
-@app.route("/api/users/<account_name>/posts")
-def api_get_user_posts(account_name):
-    user = _get_user_or_404(account_name)
+@app.route("/api/users/<account_id>/posts")
+def api_get_user_posts(account_id):
+    user = _get_user_or_404(account_id)
     if user is None:
         return flask.jsonify({"error": "not found"}), 404
 
@@ -824,9 +824,9 @@ def api_get_user_posts(account_name):
     return flask.jsonify({"posts": [_post_to_dict(p) for p in posts]})
 
 
-@app.route("/api/users/<account_name>/posts/<int:id>")
-def api_get_user_post(account_name, id):
-    user = _get_user_or_404(account_name)
+@app.route("/api/users/<account_id>/posts/<int:id>")
+def api_get_user_post(account_id, id):
+    user = _get_user_or_404(account_id)
     if user is None:
         return flask.jsonify({"error": "not found"}), 404
 
