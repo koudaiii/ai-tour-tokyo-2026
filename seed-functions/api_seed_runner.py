@@ -20,8 +20,8 @@ def generate_run_id() -> str:
     return uuid.uuid4().hex[:SEED_RUN_ID_LENGTH]
 
 
-def make_seed_account_name(base_name: str, run_id: str) -> str:
-    return f"{base_name}_{run_id}"
+def make_seed_account_id(base_id: str, run_id: str) -> str:
+    return f"{base_id}_{run_id}"
 
 
 _CSRF_TOKEN_RE = re.compile(r'name="csrf_token"\s+value="([^"]+)"')
@@ -131,14 +131,14 @@ class ApiSession:
             data=body,
         )
 
-    def register_and_login(self, account_name: str, password: str) -> str:
+    def register_and_login(self, account_id: str, password: str) -> str:
         self.submit_form(
             "/register",
-            {"account_name": account_name, "password": password},
+            {"account_id": account_id, "password": password},
         )
         self.submit_form(
             "/login",
-            {"account_name": account_name, "password": password},
+            {"account_id": account_id, "password": password},
         )
         _, html, _ = self.request("/")
         return extract_csrf_token(html.decode("utf-8", errors="replace"))
@@ -213,16 +213,17 @@ def run_seed_via_api(
 
     sessions: list[tuple[ApiSession, str, str]] = []
     for entry in users_data:
-        account_name = make_seed_account_name(entry.get("account_name"), run_id)
+        base_account_id = entry.get("account_id") or entry.get("account_name")
+        account_id = make_seed_account_id(base_account_id, run_id)
         password = entry.get("password")
-        if not account_name or not password:
+        if not account_id or not password:
             raise ValueError(
-                f"Each user entry must have account_name/password: {entry}"
+                f"Each user entry must have account_id/password: {entry}"
             )
 
         session = ApiSession(api_base_url)
-        csrf_token = session.register_and_login(account_name, password)
-        sessions.append((session, csrf_token, account_name))
+        csrf_token = session.register_and_login(account_id, password)
+        sessions.append((session, csrf_token, account_id))
 
     log(f"[seed] users ready through API: {len(sessions)}")
 
@@ -232,9 +233,9 @@ def run_seed_via_api(
         if not body:
             raise ValueError(f"Post entry at index {i} has no body")
 
-        session, csrf_token, account_name = sessions[i % len(sessions)]
+        session, csrf_token, account_id = sessions[i % len(sessions)]
         post_id = session.create_post(body, image_paths[i], csrf_token)
         created += 1
-        log(f"[seed] created post {post_id} via API as {account_name}")
+        log(f"[seed] created post {post_id} via API as {account_id}")
 
     return created
