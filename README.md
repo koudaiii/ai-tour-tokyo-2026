@@ -12,7 +12,7 @@ script/server
 Create
 
 ```sh
-script/launch-vm
+script/deploy-vm
 ```
 
 Deploy application infrastructure (Azure Blob Storage + PostgreSQL + Container Apps + Azure Functions + API Management):
@@ -146,7 +146,7 @@ VS Code (`.vscode/mcp.json`):
 - `script/azurite`: Start Azurite local storage emulator (required by MCP server)
 - `script/deploy-infra`: Deploy Azure infra (Blob Storage + PostgreSQL + Container Apps + Azure Functions + API Management) from `infra/main.bicep` (standalone host setup is done separately via `provisioning/*/ansible/playbooks.yml`; after deploy, allow network access and run `script/bootstrap` for table creation)
 - `script/grant-storage-role`: Grant Blob data role to current Azure login for a storage account
-- `script/launch-vm`: Create Azure VM
+- `script/deploy-vm`: Create Azure VM
 - `script/list-resource-groups`: List Resource Groups tagged for this repository
 - `script/destroy-vm`: Delete Resource Group(s)
 
