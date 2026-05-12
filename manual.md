@@ -2,7 +2,7 @@
 
 はじめに以下の操作を行い、問題なく動くかを確認して下さい。
 
-## 1. `script/launch-vm`
+## 1. `script/deploy-vm`
 
 ### 2. 起動した VM に `azureuser` ユーザで SSH ログインする
 

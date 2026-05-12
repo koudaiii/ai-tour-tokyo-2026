@@ -3,11 +3,11 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NOW_YYYYMMDDHHMM="$(date +%Y%m%d%H%M)"
-CLOUD_CONFIG_TEMPLATE="${ROOT_DIR}/script/launch-vm.cfg"
+CLOUD_CONFIG_TEMPLATE="${ROOT_DIR}/script/deploy-vm.cfg"
 
 usage() {
   cat <<'EOF'
-Usage: script/launch-vm [options]
+Usage: script/deploy-vm [options]
 
 Create an Azure VM and run private-isu provisioning via cloud-init + ansible.
 
@@ -44,7 +44,7 @@ require_cmd() {
 }
 
 log() {
-  echo "[launch-vm] $*"
+  echo "[deploy-vm] $*"
 }
 
 run_az() {
