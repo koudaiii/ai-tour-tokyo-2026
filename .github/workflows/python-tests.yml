@@ -2,19 +2,7 @@ name: Python Tests
 
 on:
   push:
-    paths:
-      - "app.py"
-      - "tests/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".github/workflows/python-tests.yml"
   pull_request:
-    paths:
-      - "app.py"
-      - "tests/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".github/workflows/python-tests.yml"
 
 jobs:
   test:
