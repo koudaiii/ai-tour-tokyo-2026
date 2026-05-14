@@ -53,10 +53,10 @@ script/list-resource-groups
 Destroy
 
 ```sh
-script/destroy-vm
+script/destroy-resource-group
 
 # or Destroy aLl resouce groups
-script/list-resource-groups -q | xargs -I {} script/destroy-vm -g {}
+script/list-resource-groups -q | xargs -I {} script/destroy-resource-group -g {}
 ```
 
 ## Local MCP Server
@@ -148,7 +148,7 @@ VS Code (`.vscode/mcp.json`):
 - `script/grant-storage-role`: Grant Blob data role to current Azure login for a storage account
 - `script/deploy-vm`: Create Azure VM
 - `script/list-resource-groups`: List Resource Groups tagged for this repository
-- `script/destroy-vm`: Delete Resource Group(s)
+- `script/destroy-resource-group`: Delete Resource Group(s)
 
 ## Make Commands
 
