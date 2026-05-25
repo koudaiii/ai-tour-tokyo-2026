@@ -20,6 +20,11 @@ app = func.FunctionApp()
 logger = logging.getLogger(__name__)
 
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8080")
+API_TIMEOUT_SECONDS = float(os.environ.get("API_TIMEOUT_SECONDS", "10"))
+
+
+class ApiError(Exception):
+    """Raised when the upstream API call fails, times out, or is unreachable."""
 
 
 def _api_get(path: str, params: dict | None = None) -> dict:
@@ -30,8 +35,16 @@ def _api_get(path: str, params: dict | None = None) -> dict:
             url += "?" + urllib.parse.urlencode(filtered)
     req = urllib.request.Request(url)
     req.add_header("Accept", "application/json")
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=API_TIMEOUT_SECONDS) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            raise ApiError(f"Not found: {path}") from e
+        raise ApiError(f"API error: {e.code} {e.reason}") from e
+    except (urllib.error.URLError, TimeoutError) as e:
+        reason = getattr(e, "reason", e)
+        raise ApiError(f"API unreachable (timeout={API_TIMEOUT_SECONDS}s): {reason}") from e
 
 
 def _parse_args(context) -> dict:
@@ -50,7 +63,9 @@ def _parse_args(context) -> dict:
         "Browse the social media timeline. Returns a digest of recent posts "
         "with engagement metrics (comment counts). Supports keyword filtering "
         "and cursor-based pagination. Use this as the starting point to "
-        "understand what is happening on the platform."
+        "understand what is happening on the platform. "
+        "NOTE: returned `author` / `latest_commenters` are string handles "
+        "(`users.account_id`), not numeric user IDs."
     ),
     tool_properties=json.dumps([
         {
@@ -84,8 +99,8 @@ def browse_timeline(context: str) -> str:
 
     try:
         data = _api_get("/api/posts", params)
-    except urllib.error.HTTPError as e:
-        return json.dumps({"error": f"API error: {e.code}"})
+    except ApiError as e:
+        return json.dumps({"error": str(e)})
 
     posts = data.get("posts", [])
 
@@ -126,13 +141,19 @@ def browse_timeline(context: str) -> str:
     description=(
         "Get a comprehensive view of a user: profile, activity statistics, "
         "and their recent posts with comments — all in a single call. "
-        "Use this to understand who a user is and what they have been posting."
+        "Use this to understand who a user is and what they have been posting. "
+        "NOTE: `account_id` is the user's string handle (e.g. \"terra\"), "
+        "NOT the numeric `users.id` column."
     ),
     tool_properties=json.dumps([
         {
             "propertyName": "account_id",
             "propertyType": "string",
-            "description": "The account ID of the user to explore",
+            "description": (
+                "String username / handle of the user (e.g. \"terra\", \"mary\"). "
+                "This is the `users.account_id` column, NOT the numeric `users.id`. "
+                "Do not pass numbers like 1 or 42 here."
+            ),
             "isRequired": True,
         },
     ]),
@@ -147,12 +168,12 @@ def explore_user(context: str) -> str:
 
     try:
         profile = _api_get(f"/api/users/{safe_name}")
-    except urllib.error.HTTPError as e:
-        return json.dumps({"error": f"User not found or API error: {e.code}"})
+    except ApiError as e:
+        return json.dumps({"error": f"User not found or API error: {e}"})
 
     try:
         posts_data = _api_get(f"/api/users/{safe_name}/posts")
-    except urllib.error.HTTPError:
+    except ApiError:
         posts_data = {"posts": []}
 
     posts = posts_data.get("posts", [])
@@ -193,7 +214,9 @@ def explore_user(context: str) -> str:
     description=(
         "Find the most popular (most commented) posts on the platform. "
         "The API only returns posts in chronological order, but this tool "
-        "re-ranks them by engagement. Use this to discover trending content."
+        "re-ranks them by engagement. Use this to discover trending content. "
+        "NOTE: returned `author` / `commenters` are string handles "
+        "(`users.account_id`), not numeric user IDs."
     ),
     tool_properties=json.dumps([
         {
@@ -217,8 +240,8 @@ def find_popular_posts(context: str) -> str:
 
     try:
         data = _api_get("/api/posts")
-    except urllib.error.HTTPError as e:
-        return json.dumps({"error": f"API error: {e.code}"})
+    except ApiError as e:
+        return json.dumps({"error": str(e)})
 
     posts = data.get("posts", [])
     posts = [p for p in posts if p.get("comment_count", 0) >= min_comments]
@@ -254,7 +277,9 @@ def find_popular_posts(context: str) -> str:
     description=(
         "Get a post and its full comment thread formatted as a readable "
         "conversation. Returns the original post followed by all comments "
-        "in chronological order, making it easy to follow the discussion."
+        "in chronological order, making it easy to follow the discussion. "
+        "NOTE: returned `author` is a string handle (`users.account_id`), "
+        "not a numeric user ID."
     ),
     tool_properties=json.dumps([
         {
@@ -273,8 +298,8 @@ def get_conversation(context: str) -> str:
 
     try:
         data = _api_get(f"/api/posts/{int(post_id)}")
-    except urllib.error.HTTPError as e:
-        return json.dumps({"error": f"API error: {e.code}"})
+    except ApiError as e:
+        return json.dumps({"error": str(e)})
 
     post = data.get("post")
     if not post:
@@ -313,13 +338,20 @@ def get_conversation(context: str) -> str:
     description=(
         "Compare activity statistics of two or more users side by side. "
         "Shows post counts, comment counts, and engagement metrics for each "
-        "user. Useful for understanding relative activity levels."
+        "user. Useful for understanding relative activity levels. "
+        "NOTE: `account_ids` are string handles (e.g. \"terra,mary\"), "
+        "NOT the numeric `users.id` column."
     ),
     tool_properties=json.dumps([
         {
             "propertyName": "account_ids",
             "propertyType": "string",
-            "description": "Comma-separated list of account IDs to compare (2-5 users)",
+            "description": (
+                "Comma-separated list of string usernames / handles to compare "
+                "(2-5 users, e.g. \"terra,mary,john\"). These are values of the "
+                "`users.account_id` column, NOT the numeric `users.id`. "
+                "Do not pass numbers like \"1,2,3\" here."
+            ),
             "isRequired": True,
         },
     ]),
@@ -346,10 +378,10 @@ def compare_users(context: str) -> str:
                 "commented_count": profile.get("commented_count", 0),
                 "created_at": profile.get("user", {}).get("created_at"),
             })
-        except urllib.error.HTTPError:
+        except ApiError as e:
             comparisons.append({
                 "account_id": name,
-                "error": "user not found",
+                "error": str(e),
             })
 
     return json.dumps({
@@ -367,7 +399,10 @@ def compare_users(context: str) -> str:
         "Search posts by keyword. The underlying API has no search endpoint, "
         "so this tool fetches recent posts and filters them by matching "
         "the keyword against post body text and commenter names. "
-        "Returns matching posts ranked by relevance."
+        "Returns matching posts ranked by relevance. "
+        "NOTE: `query` can also match author / commenter handles since those "
+        "are string `account_id`s (not numeric user IDs); the returned "
+        "`author` field is likewise a string handle."
     ),
     tool_properties=json.dumps([
         {
@@ -394,8 +429,8 @@ def search_posts(context: str) -> str:
 
     try:
         data = _api_get("/api/posts")
-    except urllib.error.HTTPError as e:
-        return json.dumps({"error": f"API error: {e.code}"})
+    except ApiError as e:
+        return json.dumps({"error": str(e)})
 
     posts = data.get("posts", [])
 
@@ -451,10 +486,10 @@ def search_posts(context: str) -> str:
     arg_name="context",
     tool_name="inspect_active_queries",
     description=(
-        "Inspect currently running PostgreSQL queries from pg_stat_activity "
-        "and return EXPLAIN plans for each. Connects via ISUCONP_DATABASE_URL. "
-        "Use this to diagnose slow queries, lock contention, or N+1 issues "
-        "during load tests."
+        "Inspect currently running PostgreSQL queries from pg_stat_activity, "
+        "ordered by how long each query has been running. Connects via "
+        "ISUCONP_DATABASE_URL. Use this to diagnose slow queries, lock "
+        "contention, or N+1 issues during load tests."
     ),
     tool_properties=json.dumps([
         {
@@ -485,61 +520,114 @@ def inspect_active_queries(context: str) -> str:
             pid,
             usename,
             datname,
-            EXTRACT(EPOCH FROM (now() - query_start)) * 1000 AS duration_ms,
+            now() - query_start AS duration,
             state,
             query
         FROM pg_stat_activity
         WHERE state = 'active'
-          AND pid <> pg_backend_pid()
-          AND query NOT ILIKE '%pg_stat_activity%'
-        ORDER BY duration_ms DESC
-        LIMIT %s
+        ORDER BY duration DESC
     """
 
-    sessions: list[dict] = []
     try:
         with psycopg2.connect(dsn, cursor_factory=psycopg2.extras.RealDictCursor) as conn:
             with conn.cursor() as cur:
                 cur.execute("SET statement_timeout = 2000")
-                cur.execute(activity_sql, (limit,))
+                cur.execute(activity_sql)
                 rows = cur.fetchall()
-
-                for row in rows:
-                    duration_ms = float(row["duration_ms"] or 0)
-                    if duration_ms < min_duration_ms:
-                        continue
-
-                    session = {
-                        "pid": row["pid"],
-                        "usename": row["usename"],
-                        "datname": row["datname"],
-                        "duration_ms": round(duration_ms, 2),
-                        "state": row["state"],
-                        "query": row["query"],
-                        "plan": None,
-                        "plan_error": None,
-                    }
-
-                    query_text = (row["query"] or "").strip().rstrip(";")
-                    if query_text:
-                        try:
-                            with conn.cursor() as explain_cur:
-                                explain_cur.execute(
-                                    f"EXPLAIN (FORMAT JSON) {query_text}"
-                                )
-                                explain_row = explain_cur.fetchone()
-                                if explain_row:
-                                    plan_value = next(iter(explain_row.values()))
-                                    session["plan"] = plan_value
-                        except psycopg2.Error as e:
-                            conn.rollback()
-                            session["plan_error"] = str(e).strip()
-
-                    sessions.append(session)
     except psycopg2.Error as e:
         return json.dumps({"error": f"DB error: {str(e).strip()}"})
+
+    sessions: list[dict] = []
+    for row in rows:
+        duration = row["duration"]
+        duration_ms = duration.total_seconds() * 1000 if duration else 0
+        if duration_ms < min_duration_ms:
+            continue
+
+        sessions.append({
+            "pid": row["pid"],
+            "usename": row["usename"],
+            "datname": row["datname"],
+            "duration_ms": round(duration_ms, 2),
+            "state": row["state"],
+            "query": row["query"],
+        })
+
+        if len(sessions) >= limit:
+            break
 
     return json.dumps({
         "total": len(sessions),
         "sessions": sessions,
-    }, ensure_ascii=False, default=str)
+    }, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Scenario 8: inspect_table_sizes
+# ---------------------------------------------------------------------------
+@app.mcp_tool_trigger(
+    arg_name="context",
+    tool_name="inspect_table_sizes",
+    description=(
+        "Return storage usage for every user table in the database: estimated "
+        "row count, table bytes, index bytes, and total bytes. Sorted by total "
+        "size descending. Use this to identify bloated tables (e.g. posts.imgdata "
+        "bytea bloat) before optimizing the schema."
+    ),
+    tool_properties=json.dumps([
+        {
+            "propertyName": "limit",
+            "propertyType": "number",
+            "description": "Max number of tables to return (default 50)",
+            "isRequired": False,
+        },
+    ]),
+)
+def inspect_table_sizes(context: str) -> str:
+    args = _parse_args(context)
+    limit = max(1, int(args.get("limit") or 50))
+
+    dsn = os.environ.get("ISUCONP_DATABASE_URL")
+    if not dsn:
+        return json.dumps({"error": "ISUCONP_DATABASE_URL is not set"})
+
+    sizes_sql = """
+        SELECT
+            schemaname,
+            relname AS table_name,
+            n_live_tup AS estimated_rows,
+            pg_relation_size(relid) AS table_bytes,
+            pg_indexes_size(relid) AS index_bytes,
+            pg_total_relation_size(relid) AS total_bytes,
+            pg_size_pretty(pg_total_relation_size(relid)) AS total_size
+        FROM pg_stat_user_tables
+        ORDER BY total_bytes DESC
+        LIMIT %s
+    """
+
+    try:
+        with psycopg2.connect(dsn, cursor_factory=psycopg2.extras.RealDictCursor) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SET statement_timeout = 5000")
+                cur.execute(sizes_sql, (limit,))
+                rows = cur.fetchall()
+    except psycopg2.Error as e:
+        return json.dumps({"error": f"DB error: {str(e).strip()}"})
+
+    tables = [
+        {
+            "schemaname": row["schemaname"],
+            "table_name": row["table_name"],
+            "estimated_rows": int(row["estimated_rows"] or 0),
+            "table_bytes": int(row["table_bytes"] or 0),
+            "index_bytes": int(row["index_bytes"] or 0),
+            "total_bytes": int(row["total_bytes"] or 0),
+            "total_size": row["total_size"],
+        }
+        for row in rows
+    ]
+
+    return json.dumps({
+        "total": len(tables),
+        "tables": tables,
+    }, ensure_ascii=False)

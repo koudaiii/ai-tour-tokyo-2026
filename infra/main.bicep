@@ -102,6 +102,9 @@ param containerAppsInfrastructureSubnetPrefix string = '10.10.0.0/23'
 @description('Address prefix for the PostgreSQL private endpoint subnet')
 param postgresPrivateEndpointSubnetPrefix string = '10.10.2.0/24'
 
+@description('Address prefix for the Functions VNet integration subnet (Flex Consumption)')
+param functionAppVnetIntegrationSubnetPrefix string = '10.10.3.0/24'
+
 @description('Application container image (Docker Hub or ACR)')
 param appContainerImage string = 'docker.io/koudaiii/ai-tour-tokyo-2026:latest'
 
@@ -182,6 +185,7 @@ module network 'network.bicep' = {
     virtualNetworkAddressPrefix: virtualNetworkAddressPrefix
     containerAppsInfrastructureSubnetPrefix: containerAppsInfrastructureSubnetPrefix
     postgresPrivateEndpointSubnetPrefix: postgresPrivateEndpointSubnetPrefix
+    functionAppVnetIntegrationSubnetPrefix: functionAppVnetIntegrationSubnetPrefix
   }
 }
 
@@ -277,6 +281,8 @@ module functions 'functions.bicep' = {
     appServicePlanName: functionAppServicePlanName
     functionsStorageAccountName: functionsStorageAccountName
     apiBaseUrl: containerApps.outputs.containerAppUrl
+    postgresDatabaseUrl: 'postgresql://${postgresAdminUser}:${postgresAdminPassword}@${postgres.outputs.postgresHost}:5432/${postgresDatabaseName}?sslmode=require'
+    virtualNetworkSubnetId: network.outputs.functionAppVnetIntegrationSubnetResourceId
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
   }
 }

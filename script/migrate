@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="${ROOT_DIR}/.env"
+SQL_DIR="${ROOT_DIR}/sql"
+
+SCHEMA_SQL="${SQL_DIR}/bootstrap_create_table.sql"
+ADD_BLOB_KEY_SQL="${SQL_DIR}/add_img_blob_key.sql"
+GRANT_SQL="${SQL_DIR}/bootstrap_grant_local_privileges.sql"
+FIX_SEQ_SQL="${SQL_DIR}/bootstrap_fix_sequences.sql"
+
+GRANT_ROLE="${ISUCONP_DB_USER:-isuconp}"
+DATABASE_URL_OVERRIDE=""
+RESET=0
+SKIP_GRANT=0
+SKIP_FIX_SEQUENCES=0
+DRY_RUN=0
+
+usage() {
+  cat <<'EOF'
+Usage: script/migrate [options]
+
+Apply schema, grants, and sequence fixes to the PostgreSQL pointed to by
+ISUCONP_DATABASE_URL (loaded from .env by default).
+
+Steps (in order):
+  1. sql/bootstrap_create_table.sql   - create users/posts/comments (skipped if all
+                                        three tables already exist, unless --reset)
+  2. sql/add_img_blob_key.sql         - ensure posts.img_blob_key exists (idempotent)
+  3. sql/bootstrap_grant_local_privileges.sql
+                                      - GRANT CRUD on tables, USAGE/SELECT on sequences
+                                        to the role specified by --role
+  4. sql/bootstrap_fix_sequences.sql  - reset *_id_seq above MAX(id)
+
+Options:
+  --database-url URL     Override ISUCONP_DATABASE_URL
+  --role NAME            Role to grant privileges to (default: ISUCONP_DB_USER or 'isuconp')
+  --reset                Drop and recreate tables (DESTROYS DATA in users/posts/comments)
+  --skip-grant           Skip GRANT step
+  --skip-fix-sequences   Skip sequence-fix step
+  --dry-run              Print the steps without executing psql
+  -h, --help             Show this help
+
+Examples:
+  # After script/deploy-infra (first-time schema load)
+  script/migrate
+
+  # Re-run on an existing database, wiping data
+  script/migrate --reset
+
+  # Grant to a different role
+  script/migrate --skip-grant=0 --role app_user
+EOF
+}
+
+log() {
+  echo "[migrate] $*"
+}
+
+error_exit() {
+  echo "[migrate] Error: $*" >&2
+  exit 1
+}
+
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    error_exit "'$1' is required but not installed."
+  fi
+}
+
+load_env_file() {
+  if [[ -f "${ENV_FILE}" ]]; then
+    log "Loading environment from ${ENV_FILE}"
+    set -a
+    # shellcheck disable=SC1090
+    source "${ENV_FILE}"
+    set +a
+  fi
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --database-url)
+        DATABASE_URL_OVERRIDE="${2:-}"
+        shift 2
+        ;;
+      --role)
+        GRANT_ROLE="${2:-}"
+        shift 2
+        ;;
+      --reset)
+        RESET=1
+        shift
+        ;;
+      --skip-grant)
+        SKIP_GRANT=1
+        shift
+        ;;
+      --skip-fix-sequences)
+        SKIP_FIX_SEQUENCES=1
+        shift
+        ;;
+      --dry-run)
+        DRY_RUN=1
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        echo "Error: unknown option '$1'" >&2
+        usage
+        exit 1
+        ;;
+    esac
+  done
+}
+
+run_psql() {
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    printf '[migrate] (dry-run) psql'
+    printf ' %q' "$@"
+    printf '\n'
+    return 0
+  fi
+  psql "$@"
+}
+
+psql_exec_sql() {
+  local sql="$1"
+  run_psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -Atqc "${sql}"
+}
+
+psql_exec_file() {
+  local file="$1"
+  run_psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -f "${file}"
+}
+
+table_exists() {
+  local table="$1"
+  local result
+  result="$(run_psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -Atqc \
+    "SELECT to_regclass('public.${table}') IS NOT NULL;" 2>/dev/null || true)"
+  [[ "${result}" == "t" ]]
+}
+
+all_tables_exist() {
+  for t in users posts comments; do
+    table_exists "${t}" || return 1
+  done
+  return 0
+}
+
+main() {
+  parse_args "$@"
+  require_cmd psql
+  load_env_file
+
+  if [[ -n "${DATABASE_URL_OVERRIDE}" ]]; then
+    DATABASE_URL="${DATABASE_URL_OVERRIDE}"
+  elif [[ -n "${ISUCONP_DATABASE_URL:-}" ]]; then
+    DATABASE_URL="${ISUCONP_DATABASE_URL}"
+  else
+    error_exit "ISUCONP_DATABASE_URL is not set. Run script/deploy-infra first, or pass --database-url."
+  fi
+
+  for f in "${SCHEMA_SQL}" "${ADD_BLOB_KEY_SQL}" "${GRANT_SQL}" "${FIX_SEQ_SQL}"; do
+    [[ -f "${f}" ]] || error_exit "SQL file not found: ${f}"
+  done
+
+  local masked_url="${DATABASE_URL}"
+  if [[ "${masked_url}" =~ ^(postgresql://[^:]+):([^@]+)@(.+)$ ]]; then
+    masked_url="${BASH_REMATCH[1]}:***@${BASH_REMATCH[3]}"
+  fi
+  log "Target: ${masked_url}"
+  log "Grant role: ${GRANT_ROLE}"
+  [[ "${RESET}" -eq 1 ]] && log "Mode: RESET (will DROP and CREATE tables)"
+  [[ "${DRY_RUN}" -eq 1 ]] && log "Dry run: no SQL will be executed"
+
+  if [[ "${DRY_RUN}" -ne 1 ]]; then
+    if ! run_psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -Atqc "SELECT 1;" >/dev/null 2>&1; then
+      error_exit "Cannot connect to database. Check firewall rules and ISUCONP_DATABASE_URL."
+    fi
+    log "Connectivity OK"
+  fi
+
+  local skip_schema=0
+  if [[ "${DRY_RUN}" -ne 1 ]] && [[ "${RESET}" -ne 1 ]] && all_tables_exist; then
+    log "All target tables already exist; skipping bootstrap_create_table.sql (use --reset to recreate)"
+    skip_schema=1
+  fi
+
+  if [[ "${skip_schema}" -ne 1 ]]; then
+    log "Step 1/4: applying ${SCHEMA_SQL##*/}"
+    psql_exec_file "${SCHEMA_SQL}"
+  fi
+
+  log "Step 2/4: applying ${ADD_BLOB_KEY_SQL##*/}"
+  psql_exec_file "${ADD_BLOB_KEY_SQL}"
+
+  if [[ "${SKIP_GRANT}" -eq 1 ]]; then
+    log "Step 3/4: skipped (--skip-grant)"
+  else
+    log "Step 3/4: granting privileges to role '${GRANT_ROLE}'"
+    if [[ "${GRANT_ROLE}" == "isuconp" ]]; then
+      psql_exec_file "${GRANT_SQL}"
+    else
+      psql_exec_sql "GRANT USAGE ON SCHEMA public TO ${GRANT_ROLE};"
+      psql_exec_sql "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${GRANT_ROLE};"
+      psql_exec_sql "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${GRANT_ROLE};"
+    fi
+  fi
+
+  if [[ "${SKIP_FIX_SEQUENCES}" -eq 1 ]]; then
+    log "Step 4/4: skipped (--skip-fix-sequences)"
+  else
+    log "Step 4/4: applying ${FIX_SEQ_SQL##*/}"
+    psql_exec_file "${FIX_SEQ_SQL}"
+  fi
+
+  log "Migration completed"
+}
+
+main "$@"

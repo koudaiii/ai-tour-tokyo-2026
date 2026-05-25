@@ -250,6 +250,27 @@ try_fix_schema() {
   return 1
 }
 
+is_azure_postgres() {
+  local url="${ISUCONP_DATABASE_URL:-}"
+  local host="${ISUCONP_DB_HOST:-}"
+  [[ "${url}" == *"postgres.database.azure.com"* || "${host}" == *"postgres.database.azure.com"* ]]
+}
+
+print_azure_portal_hint() {
+  if ! is_azure_postgres; then
+    return 0
+  fi
+  log "Azure PostgreSQL Flexible Server detected."
+  if [[ -n "${AZURE_POSTGRES_PORTAL_URL:-}" ]]; then
+    log "  Networking (allow your client IP here):"
+    log "    ${AZURE_POSTGRES_PORTAL_URL}"
+  else
+    log "  Open the PostgreSQL Flexible Server 'Networking' blade in the Azure portal and add your client IP."
+    log "  (AZURE_POSTGRES_PORTAL_URL is not in .env; re-run script/deploy-infra to populate it.)"
+  fi
+  log "  After the IP is allowed, load the schema with: script/migrate"
+}
+
 check_db_state() {
   local missing_tables=()
   local missing_table_privs=()
@@ -266,6 +287,8 @@ check_db_state() {
   else
     log "Checking PostgreSQL connection: ${ISUCONP_DB_USER}@{127.0.0.1|localhost|socket}:${ISUCONP_DB_PORT}/${ISUCONP_DB_NAME}"
   fi
+
+  print_azure_portal_hint
 
   if ! probe_db_connection; then
     local missing_role
@@ -299,6 +322,7 @@ check_db_state() {
       fi
     fi
     if ! probe_db_connection; then
+      print_azure_portal_hint
       error_exit "Cannot connect to PostgreSQL with current ISUCONP_DB_* settings. Details: ${LAST_DB_ERROR}"
     fi
   fi
@@ -392,6 +416,9 @@ check_db_state() {
   fi
 
   log "PostgreSQL schema and permissions look good"
+  if is_azure_postgres; then
+    log "Azure PostgreSQL: re-run 'script/migrate' anytime to refresh schema, grants, and sequence counters."
+  fi
 }
 
 for arg in "$@"; do
