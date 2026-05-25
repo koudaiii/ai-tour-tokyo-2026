@@ -18,6 +18,9 @@ param containerAppsInfrastructureSubnetPrefix string
 @description('Address prefix for the PostgreSQL private endpoint subnet')
 param postgresPrivateEndpointSubnetPrefix string
 
+@description('Address prefix for the Functions VNet integration subnet (Flex Consumption)')
+param functionAppVnetIntegrationSubnetPrefix string
+
 resource virtualNetwork 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   name: virtualNetworkName
   location: location
@@ -48,6 +51,20 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2024-05-01' = {
         properties: {
           addressPrefix: postgresPrivateEndpointSubnetPrefix
           privateEndpointNetworkPolicies: 'Disabled'
+        }
+      }
+      {
+        name: 'func-vnet-int'
+        properties: {
+          addressPrefix: functionAppVnetIntegrationSubnetPrefix
+          delegations: [
+            {
+              name: 'func-vnet-int-delegation'
+              properties: {
+                serviceName: 'Microsoft.App/environments'
+              }
+            }
+          ]
         }
       }
     ]
@@ -83,5 +100,10 @@ output postgresPrivateEndpointSubnetResourceId string = resourceId(
   'Microsoft.Network/virtualNetworks/subnets',
   virtualNetwork.name,
   'postgres-pe'
+)
+output functionAppVnetIntegrationSubnetResourceId string = resourceId(
+  'Microsoft.Network/virtualNetworks/subnets',
+  virtualNetwork.name,
+  'func-vnet-int'
 )
 output postgresPrivateDnsZoneResourceId string = postgresPrivateDnsZone.id
