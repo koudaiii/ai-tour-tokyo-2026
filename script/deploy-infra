@@ -92,6 +92,7 @@ log_resolved_parameters() {
   log "SEED_FUNCTION_APP_NAME=${SEED_FUNCTION_APP_NAME}"
   log "SEED_FUNCTION_APP_SERVICE_PLAN_NAME=${SEED_FUNCTION_APP_SERVICE_PLAN_NAME}"
   log "SEED_FUNCTIONS_STORAGE_ACCOUNT_NAME=${SEED_FUNCTIONS_STORAGE_ACCOUNT_NAME}"
+  log "APP_INSIGHTS_NAME=${APP_INSIGHTS_NAME}"
   log "POSTGRES_ADMIN_PASSWORD=***"
   log "TAGS_JSON=${TAGS_JSON}"
 }
@@ -109,7 +110,48 @@ print_application_env() {
   echo "ISUCONP_DB_HOST=${postgres_host}"
   echo "ISUCONP_DB_NAME=${POSTGRES_DB_NAME}"
   echo "CONTAINER_APP_NAME=${CONTAINER_APP_NAME}"
-  echo "# Container App: https://${CONTAINER_APP_NAME}.<generated-domain>"
+  if [[ -n "${CONTAINER_APP_URL:-}" ]]; then
+    echo "CONTAINER_APP_URL=${CONTAINER_APP_URL}"
+  else
+    echo "# CONTAINER_APP_URL is resolved via 'az containerapp show' after deployment"
+  fi
+  if [[ -n "${APP_INSIGHTS_CONNECTION_STRING:-}" ]]; then
+    echo "APPLICATIONINSIGHTS_CONNECTION_STRING=${APP_INSIGHTS_CONNECTION_STRING}"
+  else
+    echo "# APPLICATIONINSIGHTS_CONNECTION_STRING is resolved via 'az monitor app-insights component show' after deployment"
+  fi
+}
+
+fetch_container_app_url() {
+  local rg fqdn
+  rg="rg-${WORKLOAD_CODE}-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}"
+  fqdn="$(az containerapp show \
+    --name "${CONTAINER_APP_NAME}" \
+    --resource-group "${rg}" \
+    --query 'properties.configuration.ingress.fqdn' \
+    -o tsv 2>/dev/null || true)"
+  if [[ -z "${fqdn}" ]]; then
+    log "Warning: could not resolve Container App FQDN (rg=${rg}, app=${CONTAINER_APP_NAME})"
+    CONTAINER_APP_URL=""
+    return 0
+  fi
+  CONTAINER_APP_URL="https://${fqdn}"
+  log "Container App URL: ${CONTAINER_APP_URL}"
+}
+
+fetch_app_insights_connection_string() {
+  local rg
+  rg="rg-${WORKLOAD_CODE}-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}"
+  APP_INSIGHTS_CONNECTION_STRING="$(az monitor app-insights component show \
+    --app "${APP_INSIGHTS_NAME}" \
+    --resource-group "${rg}" \
+    --query 'connectionString' \
+    -o tsv 2>/dev/null || true)"
+  if [[ -z "${APP_INSIGHTS_CONNECTION_STRING}" ]]; then
+    log "Warning: could not resolve Application Insights connection string (rg=${rg}, app=${APP_INSIGHTS_NAME})"
+    return 0
+  fi
+  log "Application Insights connection string resolved (${APP_INSIGHTS_NAME})"
 }
 
 print_apim_test_guide() {
@@ -187,12 +229,14 @@ cd mcp-server && func azure functionapp publish ${FUNCTION_APP_NAME}
 }
 
 # Available MCP tools:
-#   browse_timeline   - Browse posts with keyword filter and pagination
-#   explore_user      - User profile + stats + recent posts in one call
-#   find_popular_posts - Posts ranked by engagement (comment count)
-#   get_conversation  - Post + comment thread in readable format
-#   compare_users     - Side-by-side user activity comparison
-#   search_posts      - Keyword search across posts and comments
+#   browse_timeline        - Browse posts with keyword filter and pagination
+#   explore_user           - User profile + stats + recent posts in one call
+#   find_popular_posts     - Posts ranked by engagement (comment count)
+#   get_conversation       - Post + comment thread in readable format
+#   compare_users          - Side-by-side user activity comparison
+#   search_posts           - Keyword search across posts and comments
+#   inspect_active_queries - List active PostgreSQL sessions with EXPLAIN plans
+#   inspect_table_sizes    - Storage usage per user table (rows, table/index/total bytes)
 
 ===============================================================
 EOF
@@ -235,13 +279,22 @@ EOF
 
 write_application_env_file() {
   local account_url postgres_host database_url tmp_file
+  local subscription_id tenant_ref resource_group portal_url_pg portal_url_rg
   account_url="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/"
   postgres_host="${POSTGRES_SERVER_NAME}.postgres.database.azure.com"
   database_url="postgresql://${POSTGRES_ADMIN_USER}:${POSTGRES_ADMIN_PASSWORD}@${postgres_host}:5432/${POSTGRES_DB_NAME}?sslmode=require"
+  resource_group="rg-${WORKLOAD_CODE}-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}"
+  subscription_id="$(az account show --query id -o tsv 2>/dev/null || echo '')"
+  tenant_ref="$(az account show --query tenantDefaultDomain -o tsv 2>/dev/null || echo '')"
+  if [[ -z "${tenant_ref}" ]]; then
+    tenant_ref="$(az account show --query tenantId -o tsv 2>/dev/null || echo '')"
+  fi
+  portal_url_pg="https://portal.azure.com/#@${tenant_ref}/resource/subscriptions/${subscription_id}/resourceGroups/${resource_group}/providers/Microsoft.DBforPostgreSQL/flexibleServers/${POSTGRES_SERVER_NAME}/networking"
+  portal_url_rg="https://portal.azure.com/#@${tenant_ref}/resource/subscriptions/${subscription_id}/resourceGroups/${resource_group}/overview"
   tmp_file="$(mktemp)"
 
   touch "${ENV_FILE}"
-  grep -vE '^(AZURE_STORAGE_ACCOUNT_URL|AZURE_STORAGE_CONTAINER_NAME|ISUCONP_DATABASE_URL|ISUCONP_DB_HOST|ISUCONP_DB_NAME|CONTAINER_APP_NAME|ISUCONP_DB_PORT|ISUCONP_DB_USER|ISUCONP_DB_PASSWORD|APIM_NAME|APIM_GATEWAY_URL|FUNCTION_APP_NAME|FUNCTION_APP_MCP_ENDPOINT|SEED_FUNCTION_APP_NAME|SEED_FUNCTION_APP_ENDPOINT)=' "${ENV_FILE}" > "${tmp_file}" || true
+  grep -vE '^(AZURE_STORAGE_ACCOUNT_URL|AZURE_STORAGE_CONTAINER_NAME|ISUCONP_DATABASE_URL|ISUCONP_DB_HOST|ISUCONP_DB_NAME|CONTAINER_APP_NAME|CONTAINER_APP_URL|ISUCONP_DB_PORT|ISUCONP_DB_USER|ISUCONP_DB_PASSWORD|APIM_NAME|APIM_GATEWAY_URL|FUNCTION_APP_NAME|FUNCTION_APP_MCP_ENDPOINT|SEED_FUNCTION_APP_NAME|SEED_FUNCTION_APP_ENDPOINT|AZURE_SUBSCRIPTION_ID|AZURE_TENANT_REF|AZURE_RESOURCE_GROUP|POSTGRES_SERVER_NAME|AZURE_POSTGRES_PORTAL_URL|AZURE_RESOURCE_GROUP_PORTAL_URL|APPLICATIONINSIGHTS_CONNECTION_STRING)=' "${ENV_FILE}" > "${tmp_file}" || true
   {
     cat "${tmp_file}"
     echo "AZURE_STORAGE_ACCOUNT_URL=${account_url}"
@@ -250,12 +303,24 @@ write_application_env_file() {
     echo "ISUCONP_DB_HOST=${postgres_host}"
     echo "ISUCONP_DB_NAME=${POSTGRES_DB_NAME}"
     echo "CONTAINER_APP_NAME=${CONTAINER_APP_NAME}"
+    if [[ -n "${CONTAINER_APP_URL:-}" ]]; then
+      echo "CONTAINER_APP_URL=${CONTAINER_APP_URL}"
+    fi
     echo "APIM_NAME=${APIM_NAME}"
     echo "APIM_GATEWAY_URL=https://${APIM_NAME}.azure-api.net"
     echo "FUNCTION_APP_NAME=${FUNCTION_APP_NAME}"
     echo "FUNCTION_APP_MCP_ENDPOINT=https://${FUNCTION_APP_NAME}.azurewebsites.net/runtime/webhooks/mcp"
     echo "SEED_FUNCTION_APP_NAME=${SEED_FUNCTION_APP_NAME}"
     echo "SEED_FUNCTION_APP_ENDPOINT=https://${SEED_FUNCTION_APP_NAME}.azurewebsites.net/api/seed-now"
+    echo "AZURE_SUBSCRIPTION_ID=${subscription_id}"
+    echo "AZURE_TENANT_REF=${tenant_ref}"
+    echo "AZURE_RESOURCE_GROUP=${resource_group}"
+    echo "POSTGRES_SERVER_NAME=${POSTGRES_SERVER_NAME}"
+    echo "AZURE_POSTGRES_PORTAL_URL=${portal_url_pg}"
+    echo "AZURE_RESOURCE_GROUP_PORTAL_URL=${portal_url_rg}"
+    if [[ -n "${APP_INSIGHTS_CONNECTION_STRING:-}" ]]; then
+      echo "APPLICATIONINSIGHTS_CONNECTION_STRING=${APP_INSIGHTS_CONNECTION_STRING}"
+    fi
   } > "${ENV_FILE}"
   rm -f "${tmp_file}"
 
@@ -344,6 +409,10 @@ generate_seed_functions_storage_account_name() {
   echo "stfs${WORKLOAD_CODE}${REGION_CODE}${DATE_YYMMDD:0:6}${rand}" | cut -c1-24
 }
 
+generate_app_insights_name() {
+  echo "appi-${WORKLOAD_CODE}-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}" | cut -c1-260
+}
+
 resolve_region_code() {
   case "${LOCATION}" in
     japaneast) REGION_CODE="jpe" ;;
@@ -427,6 +496,7 @@ POSTGRES_SKU_NAME="Standard_B1ms"
 POSTGRES_STORAGE_GB="32"
 CONTAINER_APPS_ENVIRONMENT_NAME=""
 CONTAINER_APP_NAME=""
+CONTAINER_APP_URL=""
 VIRTUAL_NETWORK_NAME=""
 APP_CONTAINER_IMAGE="docker.io/koudaiii/ai-tour-tokyo-2026:latest"
 MEMCACHED_CONTAINER_IMAGE="docker.io/library/memcached:1.6"
@@ -437,6 +507,8 @@ SEED_FUNCTION_APP_NAME=""
 SEED_FUNCTION_APP_SERVICE_PLAN_NAME=""
 SEED_FUNCTIONS_STORAGE_ACCOUNT_NAME=""
 APIM_NAME=""
+APP_INSIGHTS_NAME=""
+APP_INSIGHTS_CONNECTION_STRING=""
 DRY_RUN=0
 RUN_STORAGE_ROLE_GRANT=1
 RUN_POSTGRES_MI_GRANT=1
@@ -645,6 +717,9 @@ validate_inputs() {
   if [[ -z "${APIM_NAME}" ]]; then
     APIM_NAME="apim-${WORKLOAD_CODE}-${DEPLOYMENT_ENVIRONMENT}-${REGION_CODE}-${DATE_YYMMDDHHMM}"
   fi
+  if [[ -z "${APP_INSIGHTS_NAME}" ]]; then
+    APP_INSIGHTS_NAME="$(generate_app_insights_name)"
+  fi
 }
 
 main() {
@@ -741,6 +816,8 @@ main() {
   log "Deploying infra with name=${DEPLOYMENT_NAME}, location=${LOCATION}"
   run_az "${deploy_cmd[@]}"
   log "Deployment completed"
+  fetch_container_app_url
+  fetch_app_insights_connection_string
   print_application_env
   write_application_env_file
 
