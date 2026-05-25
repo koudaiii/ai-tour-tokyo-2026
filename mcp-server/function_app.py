@@ -12,6 +12,8 @@ import urllib.parse
 import urllib.request
 
 import azure.functions as func
+import psycopg2
+import psycopg2.extras
 
 app = func.FunctionApp()
 
@@ -440,3 +442,104 @@ def search_posts(context: str) -> str:
         "total_matches": len(results),
         "results": results,
     }, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Scenario 7: inspect_active_queries
+# ---------------------------------------------------------------------------
+@app.mcp_tool_trigger(
+    arg_name="context",
+    tool_name="inspect_active_queries",
+    description=(
+        "Inspect currently running PostgreSQL queries from pg_stat_activity "
+        "and return EXPLAIN plans for each. Connects via ISUCONP_DATABASE_URL. "
+        "Use this to diagnose slow queries, lock contention, or N+1 issues "
+        "during load tests."
+    ),
+    tool_properties=json.dumps([
+        {
+            "propertyName": "limit",
+            "propertyType": "number",
+            "description": "Max number of active sessions to return (default 10, max 50)",
+            "isRequired": False,
+        },
+        {
+            "propertyName": "min_duration_ms",
+            "propertyType": "number",
+            "description": "Only return queries running longer than this in milliseconds (default 0)",
+            "isRequired": False,
+        },
+    ]),
+)
+def inspect_active_queries(context: str) -> str:
+    args = _parse_args(context)
+    limit = min(int(args.get("limit") or 10), 50)
+    min_duration_ms = int(args.get("min_duration_ms") or 0)
+
+    dsn = os.environ.get("ISUCONP_DATABASE_URL")
+    if not dsn:
+        return json.dumps({"error": "ISUCONP_DATABASE_URL is not set"})
+
+    activity_sql = """
+        SELECT
+            pid,
+            usename,
+            datname,
+            EXTRACT(EPOCH FROM (now() - query_start)) * 1000 AS duration_ms,
+            state,
+            query
+        FROM pg_stat_activity
+        WHERE state = 'active'
+          AND pid <> pg_backend_pid()
+          AND query NOT ILIKE '%pg_stat_activity%'
+        ORDER BY duration_ms DESC
+        LIMIT %s
+    """
+
+    sessions: list[dict] = []
+    try:
+        with psycopg2.connect(dsn, cursor_factory=psycopg2.extras.RealDictCursor) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SET statement_timeout = 2000")
+                cur.execute(activity_sql, (limit,))
+                rows = cur.fetchall()
+
+                for row in rows:
+                    duration_ms = float(row["duration_ms"] or 0)
+                    if duration_ms < min_duration_ms:
+                        continue
+
+                    session = {
+                        "pid": row["pid"],
+                        "usename": row["usename"],
+                        "datname": row["datname"],
+                        "duration_ms": round(duration_ms, 2),
+                        "state": row["state"],
+                        "query": row["query"],
+                        "plan": None,
+                        "plan_error": None,
+                    }
+
+                    query_text = (row["query"] or "").strip().rstrip(";")
+                    if query_text:
+                        try:
+                            with conn.cursor() as explain_cur:
+                                explain_cur.execute(
+                                    f"EXPLAIN (FORMAT JSON) {query_text}"
+                                )
+                                explain_row = explain_cur.fetchone()
+                                if explain_row:
+                                    plan_value = next(iter(explain_row.values()))
+                                    session["plan"] = plan_value
+                        except psycopg2.Error as e:
+                            conn.rollback()
+                            session["plan_error"] = str(e).strip()
+
+                    sessions.append(session)
+    except psycopg2.Error as e:
+        return json.dumps({"error": f"DB error: {str(e).strip()}"})
+
+    return json.dumps({
+        "total": len(sessions),
+        "sessions": sessions,
+    }, ensure_ascii=False, default=str)
