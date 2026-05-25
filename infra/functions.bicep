@@ -20,11 +20,23 @@ param functionsStorageAccountName string
 @description('Base URL of the Container App API (e.g. https://aca-xxx.azurecontainerapps.io)')
 param apiBaseUrl string
 
+@description('PostgreSQL connection string used by the MCP DB inspection tool')
+@secure()
+param postgresDatabaseUrl string
+
+@description('Resource ID of the VNet integration subnet (delegated to Microsoft.App/environments)')
+param virtualNetworkSubnetId string
+
 @description('Application Insights connection string for monitoring')
 param appInsightsConnectionString string = ''
 
+@description('Name of the blob container used by Flex Consumption for deployment packages')
+param deploymentPackageContainerName string = 'app-package'
+
+var storageBlobDataContributorRoleId = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+
 ////////////
-// Storage Account for Azure Functions runtime
+// Storage Account for Azure Functions runtime + Flex Consumption deployment package
 ////////////
 resource functionsStorageAccount 'Microsoft.Storage/storageAccounts@2025-01-01' = {
   name: functionsStorageAccountName
@@ -41,8 +53,22 @@ resource functionsStorageAccount 'Microsoft.Storage/storageAccounts@2025-01-01' 
   }
 }
 
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2025-01-01' = {
+  parent: functionsStorageAccount
+  name: 'default'
+  properties: {}
+}
+
+resource deploymentPackageContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2025-01-01' = {
+  parent: blobService
+  name: deploymentPackageContainerName
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
 ////////////
-// App Service Plan (Consumption Y1)
+// App Service Plan (Flex Consumption FC1)
 ////////////
 resource appServicePlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   name: appServicePlanName
@@ -50,51 +76,66 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   tags: tags
   kind: 'functionapp'
   sku: {
-    name: 'Y1'
-    tier: 'Dynamic'
+    name: 'FC1'
+    tier: 'FlexConsumption'
   }
   properties: {
-    reserved: true // Linux
+    reserved: true
   }
 }
 
 ////////////
-// Function App
+// Function App (Flex Consumption, VNet integrated)
 ////////////
 resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   name: functionAppName
   location: location
   tags: tags
   kind: 'functionapp,linux'
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
+    virtualNetworkSubnetId: virtualNetworkSubnetId
+    vnetRouteAllEnabled: true
+    functionAppConfig: {
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: '${functionsStorageAccount.properties.primaryEndpoints.blob}${deploymentPackageContainerName}'
+          authentication: {
+            type: 'SystemAssignedIdentity'
+          }
+        }
+      }
+      runtime: {
+        name: 'python'
+        version: '3.11'
+      }
+      scaleAndConcurrency: {
+        maximumInstanceCount: 100
+        instanceMemoryMB: 2048
+      }
+    }
     siteConfig: {
-      linuxFxVersion: 'Python|3.11'
       appSettings: [
         {
-          name: 'AzureWebJobsStorage'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${functionsStorageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${functionsStorageAccount.listKeys().keys[0].value}'
-        }
-        {
-          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${functionsStorageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${functionsStorageAccount.listKeys().keys[0].value}'
-        }
-        {
-          name: 'WEBSITE_CONTENTSHARE'
-          value: toLower(functionAppName)
+          name: 'AzureWebJobsStorage__accountName'
+          value: functionsStorageAccount.name
         }
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
           value: '~4'
         }
         {
-          name: 'FUNCTIONS_WORKER_RUNTIME'
-          value: 'python'
-        }
-        {
           name: 'API_BASE_URL'
           value: apiBaseUrl
+        }
+        {
+          name: 'ISUCONP_DATABASE_URL'
+          value: postgresDatabaseUrl
         }
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
@@ -102,6 +143,22 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
         }
       ]
     }
+  }
+  dependsOn: [
+    deploymentPackageContainer
+  ]
+}
+
+////////////
+// RBAC: grant the Function App MI access to its own deployment storage
+////////////
+resource storageBlobDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(functionsStorageAccount.id, functionApp.id, storageBlobDataContributorRoleId)
+  scope: functionsStorageAccount
+  properties: {
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
   }
 }
 
