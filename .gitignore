@@ -9,3 +9,4 @@ provisioning/seed/images
 data/images
 .claude/worktrees
 .claude/settings.local.json
+.DS_Store
