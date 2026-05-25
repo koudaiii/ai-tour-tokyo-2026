@@ -12,6 +12,11 @@ Seed demo data in this order:
   1) create/update users from data/demo_users.json
   2) extract data/images.zip
   3) create posts from data/demo_posts_text.json with extracted images
+  4) create comments mixing three patterns:
+       - heavy commenters (top ~10% of users write ~50% of comments)
+       - flame posts     (~1% of posts attract ~30% of comments)
+       - even spread     (remaining ~20% scattered across all posts)
+     Comments target DB-wide users (del_flg=0) and posts.
 
 Options:
   --users-json PATH     Users JSON file (default: data/demo_users.json)
@@ -19,6 +24,15 @@ Options:
   --images-zip PATH     Images zip file (default: data/images.zip)
   --extract-dir PATH    Extraction directory (default: data)
   --post-count NUM      Number of posts to create (default: 100)
+  --user-count NUM      Number of users to create (default: 100 = len(users JSON))
+                        Cycles through base users with a _<cycle> suffix when > 100.
+  --comment-count NUM   Number of comments to create (default: post_count * 3).
+                        Pass 0 to skip comment seeding entirely.
+  --heavy-user-rate R   Fraction of DB users acting as heavy commenters (0, 1].
+                        Default: 0.10 (= top 10% of users).
+  --flame-post-rate R   Fraction of DB posts acting as flame posts (0, 1].
+                        Default: 0.01 (= 1% of posts).
+                        Lower this to concentrate flame comments on fewer posts.
   -h, --help            Show this help
 
 Environment:
