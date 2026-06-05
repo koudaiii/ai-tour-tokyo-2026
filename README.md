@@ -9,16 +9,6 @@ script/server
 
 ## On Azure PaaS
 
-TODO
-
-## On Azure VM
-
-Create
-
-```sh
-script/deploy-vm
-```
-
 Deploy application infrastructure (Azure Blob Storage + PostgreSQL + Container Apps + Azure Functions + API Management):
 
 ```sh
@@ -48,13 +38,23 @@ cd seed-functions && func azure functionapp publish <SEED_FUNCTION_APP_NAME> --p
 
 The `<FUNCTION_APP_NAME>` and `<SEED_FUNCTION_APP_NAME>` values are printed by `script/deploy-infra` and saved to `.env`.
 
-List
+## On Azure VM
+
+Create
+
+```sh
+script/deploy-vm
+```
+
+
+
+## List
 
 ```sh
 script/list-resource-groups
 ```
 
-Destroy
+## Destroy
 
 ```sh
 script/destroy-resource-group
