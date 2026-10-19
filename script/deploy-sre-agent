@@ -8,17 +8,18 @@ ENV_FILE="${ROOT_DIR}/.env"
 TAGS_JSON='{"CostControl":"ignore","SecurityControl":"ignore","GitHub Repository":"koudaiii/ai-tour-tokyo-2026"}'
 WORKLOAD_CODE="pisu"
 DEPLOYMENT_ENVIRONMENT="sandbox"
+SUPPORTED_LOCATIONS="australiaeast canadacentral centralus eastasia eastus2 francecentral italynorth japaneast koreacentral northcentralus southafricanorth southeastasia spaincentral swedencentral uksouth westcentralus westus2 westus3"
+SUPPORTED_LOCATIONS_DISPLAY="${SUPPORTED_LOCATIONS// /|}"
 
 usage() {
-  cat <<'EOF'
+  cat <<EOF
 Usage: script/deploy-sre-agent [options]
 
 Deploy Azure SRE Agent (Microsoft.App/agents) for the private-isu application.
 
-The SRE Agent itself is provisioned in an SRE-supported region (eastus2,
-swedencentral, or australiaeast) into a dedicated resource group. RBAC roles
-are granted to the agent's managed identity on the existing application
-resource group (typically deployed via script/deploy-infra in japaneast).
+The SRE Agent itself is provisioned in Japan East by default into a dedicated
+resource group. RBAC roles are granted to the agent's managed identity on the
+existing application resource group.
 
 Options:
   --tag KEY=VALUE             Azure resource tag used to locate the target
@@ -29,8 +30,8 @@ Options:
                               (matches resources deployed by script/deploy-infra).
   --main-resource-group NAME  Explicit application resource group (skips
                               tag-based lookup).
-  --location LOCATION         SRE Agent region: eastus2|swedencentral|australiaeast
-                              (default: australiaeast)
+  --location LOCATION         SRE Agent region: ${SUPPORTED_LOCATIONS_DISPLAY}
+                              (default: japaneast)
   --region-code CODE          Region code used in names (default: derived from location)
   --deployment-name NAME      Deployment name (default: sre-agent-YYYYMMDDHHmm)
   --date-suffix VALUE         nowYyyymmddHhmm parameter (default: YYYYMMDDHHmm)
@@ -126,9 +127,24 @@ ensure_sre_provider_registered() {
 
 resolve_region_code_from_location() {
   case "${LOCATION}" in
-    eastus2) REGION_CODE="eus2" ;;
-    swedencentral) REGION_CODE="sec" ;;
     australiaeast) REGION_CODE="aue" ;;
+    canadacentral) REGION_CODE="cac" ;;
+    centralus) REGION_CODE="cus" ;;
+    eastasia) REGION_CODE="eas" ;;
+    eastus2) REGION_CODE="eus2" ;;
+    francecentral) REGION_CODE="frc" ;;
+    italynorth) REGION_CODE="itn" ;;
+    japaneast) REGION_CODE="jpe" ;;
+    koreacentral) REGION_CODE="krc" ;;
+    northcentralus) REGION_CODE="ncus" ;;
+    southafricanorth) REGION_CODE="san" ;;
+    southeastasia) REGION_CODE="sea" ;;
+    spaincentral) REGION_CODE="spc" ;;
+    swedencentral) REGION_CODE="sec" ;;
+    uksouth) REGION_CODE="uks" ;;
+    westcentralus) REGION_CODE="wcus" ;;
+    westus2) REGION_CODE="wus2" ;;
+    westus3) REGION_CODE="wus3" ;;
     *) REGION_CODE="$(echo "${LOCATION}" | tr -cd '[:alnum:]' | tr '[:upper:]' '[:lower:]' | cut -c1-4)" ;;
   esac
 }
@@ -255,7 +271,7 @@ format_managed_resource_ids_json() {
   echo "${out}"
 }
 
-LOCATION="australiaeast"
+LOCATION="japaneast"
 REGION_CODE=""
 DATE_SUFFIX="${NOW_YYYYMMDDHHMM}"
 DEPLOYMENT_NAME=""
@@ -346,13 +362,10 @@ validate_inputs() {
     echo "Error: --date-suffix must be 12 digits (YYYYMMDDHHmm)." >&2
     exit 1
   fi
-  case "${LOCATION}" in
-    eastus2|swedencentral|australiaeast) ;;
-    *)
-      echo "Error: --location must be one of eastus2, swedencentral, australiaeast (got: ${LOCATION})" >&2
-      exit 1
-      ;;
-  esac
+  if [[ " ${SUPPORTED_LOCATIONS} " != *" ${LOCATION} "* ]]; then
+    echo "Error: --location must be one of ${SUPPORTED_LOCATIONS// /, } (got: ${LOCATION})" >&2
+    exit 1
+  fi
   if [[ -z "${REGION_CODE}" ]]; then
     resolve_region_code_from_location
   fi

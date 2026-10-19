@@ -3,18 +3,33 @@
 ////////////
 targetScope = 'subscription'
 
-metadata description = 'Deploy Azure SRE Agent for private-isu. The agent is provisioned in an SRE-supported region (eastus2/swedencentral/australiaeast) and granted RBAC on the existing application resource group (typically in japaneast).'
+metadata description = 'Deploy Azure SRE Agent for private-isu and grant RBAC on the existing application resource group.'
 
 ////////////
 // Parameters
 ////////////
 @description('Azure region for the SRE Agent (must support Microsoft.App/agents)')
 @allowed([
-  'eastus2'
-  'swedencentral'
   'australiaeast'
+  'canadacentral'
+  'centralus'
+  'eastasia'
+  'eastus2'
+  'francecentral'
+  'italynorth'
+  'japaneast'
+  'koreacentral'
+  'northcentralus'
+  'southafricanorth'
+  'southeastasia'
+  'spaincentral'
+  'swedencentral'
+  'uksouth'
+  'westcentralus'
+  'westus2'
+  'westus3'
 ])
-param location string = 'australiaeast'
+param location string = 'japaneast'
 
 @description('Date suffix for resource group name (YYYYMMDDHHmm format)')
 param nowYyyymmddHhmm string
@@ -30,7 +45,7 @@ param deploymentEnvironment string = 'sandbox'
 @description('Region code used in resource names')
 @minLength(2)
 @maxLength(4)
-param regionCode string = 'aue'
+param regionCode string = 'jpe'
 
 @description('Name of the existing application resource group (Container App, PostgreSQL, App Insights, etc.) to monitor')
 param mainResourceGroupName string

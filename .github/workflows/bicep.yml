@@ -22,7 +22,11 @@ jobs:
         run: az bicep restore --file infra/main.bicep
 
       - name: Bicep Lint
-        run: az bicep lint --file infra/main.bicep
+        run: |
+          az bicep lint --file infra/main.bicep
+          az bicep lint --file infra/sre-agent.bicep
 
       - name: Bicep Build
-        run: az bicep build --file infra/main.bicep
+        run: |
+          az bicep build --file infra/main.bicep
+          az bicep build --file infra/sre-agent.bicep
